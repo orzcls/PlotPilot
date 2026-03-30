@@ -8,7 +8,7 @@
         :disabled="loading"
         aria-label="刷新数据"
       >
-        <n-icon :component="RefreshOutline" :class="{ spinning: loading }" />
+        <span :class="{ spinning: loading }">🔄</span>
       </button>
     </header>
 
@@ -51,8 +51,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { NIcon } from 'naive-ui'
-import { RefreshOutline } from '@vicons/ionicons5'
 import StatCard from './StatCard.vue'
 import { useStatsStore } from '@/stores/statsStore'
 
@@ -186,7 +184,7 @@ const updateTimeText = computed(() => formatTime(lastUpdateTime.value))
   outline-offset: 2px;
 }
 
-.refresh-button .n-icon {
+.refresh-button span {
   font-size: 20px;
   color: #6b7280;
 }
