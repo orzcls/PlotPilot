@@ -161,6 +161,7 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { chatApi } from '../../api/book'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import type { ChapterListItem, ChatMessage } from '../../types/api'
 
 interface Props {
@@ -208,7 +209,18 @@ const streamText = ref('')
 const streamTools = ref<Array<{ name: string; ok: boolean; detail: string }>>([])
 const rightPanel = ref<'bible' | 'knowledge'>('knowledge')
 
-const messageScrollRef = ref<{ scrollTo: (o: { top?: number; behavior?: ScrollBehavior }) => void } | null>(null)
+interface ScrollToParams {
+  top: number
+  behavior: ScrollBehavior
+}
+
+const messageScrollRef = ref<{ scrollTo: (params: ScrollToParams) => void } | null>(null)
+
+// AbortController for SSE stream cleanup
+let abortController: AbortController | null = null
+
+// Scroll performance optimization with requestAnimationFrame
+let scrollRaf: number | null = null
 
 const chapterSelectOptions = computed(() =>
   props.chapters.map(c => ({ label: `第${c.id}章 ${c.title ? c.title.slice(0, 8) : ''}`, value: c.id }))
@@ -247,8 +259,9 @@ const onClearMenu = async (key: string | number) => {
     await chatApi.clearThread(props.slug, k === 'both')
     await fetchMessages()
     message.success(k === 'both' ? '已清空对话与远期摘要' : '已清空对话记录')
-  } catch (e: any) {
-    message.error(e?.response?.data?.detail || '清空失败')
+  } catch (error: Error | unknown) {
+    const errorMessage = error instanceof Error ? error.message : '清空失败'
+    message.error(errorMessage)
   }
 }
 
@@ -279,7 +292,8 @@ const fetchMessages = async () => {
 }
 
 const scrollToBottom = () => {
-  nextTick(() => {
+  if (scrollRaf) cancelAnimationFrame(scrollRaf)
+  scrollRaf = requestAnimationFrame(() => {
     messageScrollRef.value?.scrollTo({ top: 999999, behavior: 'smooth' })
   })
 }
@@ -320,6 +334,10 @@ const sendMessageStream = async (userMessage: string, clearFlag: boolean) => {
   if (useStreamDraft.value) streamDraftVisible.value = true
   scrollToBottom()
 
+  // Create new AbortController for this stream
+  abortController = new AbortController()
+  const controller = abortController
+
   let res: Response
   try {
     res = await chatApi.sendStream(props.slug, userMessage, {
@@ -327,7 +345,8 @@ const sendMessageStream = async (userMessage: string, clearFlag: boolean) => {
       history_mode: historyMode.value,
       clear_thread: clearFlag,
     })
-  } catch {
+  } catch (error: Error | unknown) {
+    if (controller.signal.aborted) return
     streamActive.value = false
     message.error('网络错误')
     return
@@ -378,6 +397,10 @@ const sendMessageStream = async (userMessage: string, clearFlag: boolean) => {
         }
       }
     }
+  } catch (error: Error | unknown) {
+    // Check if this is an abort error from component unmount
+    if (error instanceof Error && error.name === 'AbortError') return
+    message.error(error instanceof Error ? error.message : '流式生成失败')
   } finally {
     streamActive.value = false
     streamText.value = ''
@@ -408,16 +431,22 @@ const sendMessage = async () => {
         message.warning(res.reply || '未生成回复')
       }
     }
-  } catch (error: any) {
-    message.error(error?.response?.data?.detail || '发送失败')
+  } catch (error: Error | unknown) {
+    const errorMessage = error instanceof Error ? error.message : '发送失败'
+    message.error(errorMessage)
   } finally {
     sending.value = false
   }
 }
 
 // 侧栏知识检索「引用到输入框」
-const onComposerInsert = (ev: any) => {
-  const text = (ev?.detail?.text || '').toString()
+interface ComposerInsertEvent extends CustomEvent {
+  detail: { text: string }
+}
+
+const onComposerInsert = (ev: Event) => {
+  const customEvent = ev as ComposerInsertEvent
+  const text = customEvent.detail?.text || ''
   if (!text.trim()) return
   if (!inputMessage.value.trim()) inputMessage.value = text
   else inputMessage.value = inputMessage.value.trimEnd() + '\n\n' + text
@@ -437,13 +466,18 @@ const getRoleLabel = (role: string, meta?: { tools?: unknown[] }) => {
   return map[role] || role
 }
 
-const getRoleType = (role: string) => {
-  const map: Record<string, any> = { user: 'info', assistant: 'default', system: 'warning' }
+const getRoleType = (role: string): 'info' | 'default' | 'warning' => {
+  const map: Record<string, 'info' | 'default' | 'warning'> = {
+    user: 'info',
+    assistant: 'default',
+    system: 'warning'
+  }
   return map[role] || 'default'
 }
 
 const renderMarkdown = (content: string) => {
-  return marked.parse(content || '', { breaks: true, async: false }) as string
+  const html = marked.parse(content || '', { breaks: true, async: false }) as string
+  return DOMPurify.sanitize(html)
 }
 
 const formatTime = (ts: string) => {
@@ -451,12 +485,22 @@ const formatTime = (ts: string) => {
 }
 
 onMounted(() => {
-  window.addEventListener('aitext:composer:insert', onComposerInsert as any)
+  window.addEventListener('aitext:composer:insert', onComposerInsert as EventListener)
   fetchMessages()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('aitext:composer:insert', onComposerInsert as any)
+  // Abort any ongoing stream to prevent memory leaks
+  if (abortController) {
+    abortController.abort()
+  }
+
+  // Clean up any pending scroll animation
+  if (scrollRaf) {
+    cancelAnimationFrame(scrollRaf)
+  }
+
+  window.removeEventListener('aitext:composer:insert', onComposerInsert as EventListener)
 })
 
 // Public methods that parent can call
