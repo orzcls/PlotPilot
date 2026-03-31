@@ -21,6 +21,12 @@ export interface BibleDTO {
   world_settings: WorldSettingDTO[]
 }
 
+export interface AddCharacterRequest {
+  character_id: string
+  name: string
+  description: string
+}
+
 export const bibleApi = {
   /**
    * Create bible for a novel
@@ -40,13 +46,17 @@ export const bibleApi = {
     apiClient.get<BibleDTO>(`/bible/novels/${novelId}/bible`) as Promise<BibleDTO>,
 
   /**
+   * List all characters in a bible
+   * GET /api/v1/bible/novels/{novelId}/bible/characters
+   */
+  listCharacters: (novelId: string) =>
+    apiClient.get<CharacterDTO[]>(`/bible/novels/${novelId}/bible/characters`) as Promise<CharacterDTO[]>,
+
+  /**
    * Add character to bible
    * POST /api/v1/bible/novels/{novelId}/bible/characters
    */
-  addCharacter: (
-    novelId: string,
-    data: { character_id: string; name: string; description: string }
-  ) =>
+  addCharacter: (novelId: string, data: AddCharacterRequest) =>
     apiClient.post<BibleDTO>(`/bible/novels/${novelId}/bible/characters`, data) as Promise<BibleDTO>,
 
   /**
