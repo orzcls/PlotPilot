@@ -286,6 +286,7 @@ const handleCreate = async () => {
       title: title,
       author: '作者', // Default author
       target_chapters: showAdvanced.value ? newBook.value.chapters : 10,
+      premise: newBook.value.premise, // 传递故事梗概
     }
 
     const result = await novelApi.createNovel(payload)

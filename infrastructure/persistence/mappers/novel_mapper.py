@@ -30,6 +30,7 @@ class NovelMapper:
             "title": novel.title,
             "author": novel.author,
             "target_chapters": novel.target_chapters,
+            "premise": getattr(novel, 'premise', ''),  # 兼容旧数据
             "stage": novel.stage.value,
             "chapters": [
                 {
@@ -70,6 +71,7 @@ class NovelMapper:
                 title=data["title"],
                 author=data["author"],
                 target_chapters=data["target_chapters"],
+                premise=data.get("premise", ""),  # 兼容旧数据
                 stage=NovelStage(data["stage"])
             )
 

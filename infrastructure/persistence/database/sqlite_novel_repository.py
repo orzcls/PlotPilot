@@ -19,27 +19,30 @@ class SqliteNovelRepository(NovelRepository):
     def save(self, novel: Novel) -> None:
         """保存小说"""
         sql = """
-            INSERT INTO novels (id, title, slug, target_chapters, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO novels (id, title, slug, target_chapters, premise, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 slug = excluded.slug,
                 target_chapters = excluded.target_chapters,
+                premise = excluded.premise,
                 updated_at = excluded.updated_at
         """
         now = datetime.utcnow().isoformat()
         novel_id = novel.novel_id.value if hasattr(novel, 'novel_id') else novel.id
         slug = novel_id  # 使用 novel_id 作为唯一 slug
+        premise = getattr(novel, 'premise', '')
+
         self.db.execute(sql, (
             novel_id,
             novel.title,
             slug,
             novel.target_chapters,
+            premise,
             now,
             now
         ))
         self.db.get_connection().commit()
-        logger.info(f"Saved novel: {novel_id}")
 
     def get_by_id(self, novel_id: NovelId) -> Optional[Novel]:
         """根据 ID 获取小说"""
@@ -53,7 +56,8 @@ class SqliteNovelRepository(NovelRepository):
             id=novel_id,
             title=row['title'],
             author="未知作者",  # 数据库中没有 author 字段，使用默认值
-            target_chapters=row['target_chapters']
+            target_chapters=row['target_chapters'],
+            premise=row.get('premise', '')
         )
 
     def get_by_slug(self, slug: str) -> Optional[Novel]:
@@ -69,7 +73,8 @@ class SqliteNovelRepository(NovelRepository):
             id=NovelId(row['id']),
             title=row['title'],
             author="未知作者",  # 数据库中没有 author 字段，使用默认值
-            target_chapters=row['target_chapters']
+            target_chapters=row['target_chapters'],
+            premise=row.get('premise', '')
         )
 
     def list_all(self) -> List[Novel]:
@@ -83,7 +88,8 @@ class SqliteNovelRepository(NovelRepository):
                 id=NovelId(row['id']),
                 title=row['title'],
                 author="未知作者",  # 数据库中没有 author 字段，使用默认值
-                target_chapters=row['target_chapters']
+                target_chapters=row['target_chapters'],
+                premise=row.get('premise', '')
             )
             for row in rows
         ]

@@ -47,6 +47,7 @@ class NovelDTO:
     author: str
     target_chapters: int
     stage: str
+    premise: str
     chapters: List[ChapterDTO]
     total_word_count: int
     has_bible: bool = False
@@ -70,6 +71,7 @@ class NovelDTO:
             author=novel.author,
             target_chapters=novel.target_chapters,
             stage=novel.stage.value,
+            premise=getattr(novel, 'premise', ''),  # 兼容旧数据
             chapters=chapters,
             total_word_count=novel.get_total_word_count().value
         )

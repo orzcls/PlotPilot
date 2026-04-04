@@ -25,27 +25,27 @@ class AutoBibleGenerator:
     async def generate_and_save(
         self,
         novel_id: str,
-        title: str,
+        premise: str,
         target_chapters: int
     ) -> Dict[str, Any]:
         """生成并保存 Bible
 
         Args:
             novel_id: 小说 ID
-            title: 小说标题
+            premise: 故事梗概/创意
             target_chapters: 目标章节数
 
         Returns:
             生成的 Bible 数据
         """
-        logger.info(f"Generating Bible for novel: {title}")
+        logger.info(f"Generating Bible for novel: {premise[:50]}...")
 
         # 1. 创建空 Bible
         bible_id = f"{novel_id}-bible"
         self.bible_service.create_bible(bible_id, novel_id)
 
         # 2. 用 LLM 生成设定
-        bible_data = await self._generate_bible_data(title, target_chapters)
+        bible_data = await self._generate_bible_data(premise, target_chapters)
 
         # 3. 保存到 Bible
         await self._save_to_bible(novel_id, bible_data)
@@ -53,18 +53,20 @@ class AutoBibleGenerator:
         logger.info(f"Bible generated successfully for {novel_id}")
         return bible_data
 
-    async def _generate_bible_data(self, title: str, target_chapters: int) -> Dict[str, Any]:
+    async def _generate_bible_data(self, premise: str, target_chapters: int) -> Dict[str, Any]:
         """使用 LLM 生成 Bible 数据"""
 
-        system_prompt = """你是资深网文策划编辑。根据小说标题，生成完整的人物和世界设定。
+        system_prompt = """你是资深网文策划编辑。根据用户提供的故事创意/梗概，生成完整的人物和世界设定。
 
 **重要：只输出 JSON，不要有任何其他文字。**
 
 要求：
-1. 至少 3-5 个主要人物（主角、配角、对手、导师等），确保人物之间有冲突和互动
-2. 每个人物：姓名、定位（主角/配角/对手/导师）、性格特点、目标动机
-3. 至少 2-3 个重要地点
-4. 明确的文风公约（叙事视角、基调）
+1. 深入理解故事梗概，提取核心冲突、主题、世界观
+2. 至少 3-5 个主要人物（主角、配角、对手、导师等），确保人物之间有冲突和互动
+3. 每个人物：姓名、定位（主角/配角/对手/导师）、性格特点、目标动机
+4. 至少 2-3 个重要地点，符合故事背景
+5. 明确的文风公约（叙事视角、人称、基调、节奏）
+6. 人物和地点要符合故事类型（现代都市/古代/玄幻/科幻等）
 
 JSON 格式（不要有其他文字）：
 {
@@ -82,17 +84,20 @@ JSON 格式（不要有其他文字）：
       "description": "地点描述"
     }
   ],
-  "style": "第三人称有限视角，轻松幽默基调，避免过度血腥暴力"
+  "style": "第三人称有限视角，以XX视角为主。基调XX，节奏XX。避免XX。营造XX氛围。"
 }"""
 
-        user_prompt = f"""小说标题：《{title}》
+        user_prompt = f"""故事创意：{premise}
+
 目标章节数：{target_chapters}章
 
-请生成这部小说的完整设定。确保：
-1. 人物要有层次，不能只有主角
-2. 要有明确的冲突和对立面
-3. 世界观要清晰
-4. 适合网文读者
+请根据这个故事创意，生成完整的人物和世界设定。注意：
+1. 从故事创意中提取关键信息（主角身份、核心能力、故事背景、主要冲突）
+2. 人物要有层次，不能只有主角，要有配角、对手、导师等
+3. 要有明确的冲突和对立面
+4. 世界观要清晰，地点要符合故事类型
+5. 文风公约要具体，明确叙事视角、基调、节奏
+6. 适合网文读者，有代入感
 
 只输出 JSON，不要有任何解释文字。"""
 

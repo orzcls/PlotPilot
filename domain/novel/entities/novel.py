@@ -24,6 +24,7 @@ class Novel(BaseEntity):
         title: str,
         author: str,
         target_chapters: int,
+        premise: str = "",
         stage: NovelStage = NovelStage.PLANNING
     ):
         super().__init__(id.value)
@@ -31,6 +32,7 @@ class Novel(BaseEntity):
         self.title = title
         self.author = author
         self.target_chapters = target_chapters
+        self.premise = premise  # 故事梗概/创意
         self.stage = stage
         self.chapters: List[Chapter] = []
 

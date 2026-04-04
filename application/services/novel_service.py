@@ -41,7 +41,8 @@ class NovelService:
         novel_id: str,
         title: str,
         author: str,
-        target_chapters: int
+        target_chapters: int,
+        premise: str = ""
     ) -> NovelDTO:
         """创建新小说
 
@@ -50,6 +51,7 @@ class NovelService:
             title: 标题
             author: 作者
             target_chapters: 目标章节数
+            premise: 故事梗概/创意
 
         Returns:
             NovelDTO
@@ -59,6 +61,7 @@ class NovelService:
             title=title,
             author=author,
             target_chapters=target_chapters,
+            premise=premise,
             stage=NovelStage.PLANNING
         )
 

@@ -137,7 +137,7 @@ async def generate_bible(
     """
     async def _generate_task():
         try:
-            # 获取小说信息（需要 title 和 target_chapters）
+            # 获取小说信息（需要 premise 和 target_chapters）
             from interfaces.api.dependencies import get_novel_service
             novel_service = get_novel_service()
             novel = novel_service.get_novel(novel_id)
@@ -145,10 +145,13 @@ async def generate_bible(
                 logger.error(f"Novel not found: {novel_id}")
                 return
 
+            # 使用 premise（故事梗概）生成 Bible，如果没有则使用 title
+            premise = novel.premise if novel.premise else novel.title
+
             # 生成 Bible
             bible_data = await bible_generator.generate_and_save(
                 novel_id,
-                novel.title,
+                premise,
                 novel.target_chapters
             )
 

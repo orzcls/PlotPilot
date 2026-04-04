@@ -578,23 +578,10 @@ async def plan_novel(
             try:
                 outline = await workflow.suggest_outline(novel_id, chapter_num)
 
-                # 创建章节实体并保存到仓储
-                from domain.novel.entities.chapter import Chapter
-                from domain.novel.value_objects.chapter_id import ChapterId
-
+                # 创建章节（通过 novel_service.add_chapter 统一处理）
                 chapter_id = f"{novel_id}-chapter-{chapter_num}"
-                chapter = Chapter(
-                    id=chapter_id,
-                    novel_id=NovelId(novel_id),
-                    number=chapter_num,
-                    title=f"第{chapter_num}章",
-                    content=""  # 大纲暂时不保存到 content，等生成时再填充
-                )
 
-                # 保存到章节仓储
-                chapter_service.chapter_repository.save(chapter)
-
-                # 同时更新小说的章节列表
+                # 使用 novel_service.add_chapter 创建并保存章节
                 novel_service.add_chapter(
                     novel_id=novel_id,
                     chapter_id=chapter_id,
