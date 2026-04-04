@@ -39,6 +39,11 @@ def test_sync_idempotent(sync_service):
         ("novel-1",),
     )
     assert len(rows) == 1
+    anchors = repo._db.fetch_all(
+        "SELECT id FROM triples WHERE novel_id = ? AND predicate = '地图地点'",
+        ("novel-1",),
+    )
+    assert len(anchors) == 2
 
 
 def test_root_removes_containment(sync_service):
@@ -62,6 +67,31 @@ def test_root_removes_containment(sync_service):
         ("novel-1",),
     )
     assert len(rows) == 0
+    anchors = svc._repo._db.fetch_all(
+        "SELECT id FROM triples WHERE novel_id = ? AND predicate = '地图地点'",
+        ("novel-1",),
+    )
+    assert len(anchors) == 2
+
+
+def test_remove_location_deletes_anchor(sync_service):
+    svc, _ = sync_service
+    svc.sync_from_locations(
+        "novel-1",
+        [
+            {"id": "a", "name": "A", "parent_id": None},
+            {"id": "b", "name": "B", "parent_id": None},
+        ],
+    )
+    svc.sync_from_locations(
+        "novel-1",
+        [{"id": "a", "name": "A", "parent_id": None}],
+    )
+    anchors = svc._repo._db.fetch_all(
+        "SELECT id FROM triples WHERE novel_id = ? AND predicate = '地图地点'",
+        ("novel-1",),
+    )
+    assert len(anchors) == 1
 
 
 def test_chapter_inferred_untouched(sync_service):

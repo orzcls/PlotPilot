@@ -44,7 +44,12 @@ class BibleService:
         if self._location_triple_sync is None:
             return
         locs = [
-            {"id": loc.id.strip(), "name": loc.name.strip(), "parent_id": loc.parent_id}
+            {
+                "id": loc.id.strip(),
+                "name": loc.name.strip(),
+                "parent_id": loc.parent_id,
+                "type": (loc.location_type or "").strip(),
+            }
             for loc in bible.locations
         ]
         self._location_triple_sync.sync_from_locations(novel_id, locs)

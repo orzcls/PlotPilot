@@ -105,6 +105,7 @@ def _triple_to_fact_dict(triple: Triple) -> dict:
 
 BIBLE_LOCATION_ATTR_KEY = "bible_location_id"
 CONTAINMENT_PREDICATE = "位于"
+BIBLE_ANCHOR_PREDICATE = "地图地点"
 
 
 class TripleRepository:
@@ -150,6 +151,20 @@ class TripleRepository:
             WHERE t.novel_id = ? AND t.predicate = ? AND t.source_type = 'bible_generated'
             """,
             (BIBLE_LOCATION_ATTR_KEY, novel_id, CONTAINMENT_PREDICATE),
+        )
+        return [dict(r) for r in rows]
+
+    def list_bible_generated_anchor_with_location_ids(
+        self, novel_id: str,
+    ) -> List[dict]:
+        rows = self._db.fetch_all(
+            """
+            SELECT DISTINCT t.id, a.attr_value AS bible_location_id
+            FROM triples t
+            INNER JOIN triple_attr a ON a.triple_id = t.id AND a.attr_key = ?
+            WHERE t.novel_id = ? AND t.predicate = ? AND t.source_type = 'bible_generated'
+            """,
+            (BIBLE_LOCATION_ATTR_KEY, novel_id, BIBLE_ANCHOR_PREDICATE),
         )
         return [dict(r) for r in rows]
 
