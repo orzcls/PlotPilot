@@ -23,7 +23,7 @@
 **唯一真源**：SQLite 中 **`triples` 表**（与 `schema.sql` 对齐的 **主谓宾字符串行**），在应用层对应 **`domain.knowledge.knowledge_triple.KnowledgeTriple`**（及 API DTO）。
 
 - **叙事与检索**：一律以「主语 / 谓词 / 宾语」字符串为 **稳定对外语义**（便于展示、向量检索、关键词检索）。
-- **溯源与质量**：用 **显式列 + `attributes` JSON** 承载扩展字段（见下节），避免再开第二套仓储类写同一张表。
+- **溯源与质量**：用 **显式列 + 子表 `triple_attr` / `triple_tags` / `triple_more_chapters`** 承载扩展字段（与 [SQLite 关系模型](./2026-04-04-sqlite-relationship-model.md) 一致），**库内不用 TEXT 存 JSON**；避免再开第二套仓储类写同一张表。
 
 **`StoryKnowledge`** 继续作为 **聚合根**：`facts` 列表即该小说全部三元组；`premise_lock`、`chapters` 等保持现有职责。
 
@@ -31,20 +31,21 @@
 
 ## 3. 数据模型扩展（开发期可直接改库，无迁移顾虑）
 
-在现有 `triples` 列（`subject`, `predicate`, `object`, `chapter_id`, `note`, `entity_type`, `importance`, `location_type`, `description`, `first_appearance`, `related_chapters`, `tags`, `attributes`）基础上 **新增**（或等价落在 `attributes` 中，但下列建议 **建列以便索引与检索**）：
+在 `triples` 主行（`subject`, `predicate`, `object`, `chapter_number`, `note`, `entity_type`, `importance`, `location_type`, `description`, `first_appearance`）及子表（`triple_more_chapters`, `triple_tags`, `triple_attr`）基础上，下列字段 **建列以便索引与检索**（扩展键值仍落在 `triple_attr`，非 JSON 列）：
 
 | 列名 | 类型 | 说明 |
 |------|------|------|
 | `confidence` | REAL NULL | 推断/生成置信度；人工默认可 1.0 或 NULL |
-| `source_type` | TEXT NULL | `manual` \| `bible_generated` \| `chapter_inferred` \| `ai_generated`（可再枚举化） |
+| `source_type` | TEXT NULL | `manual` \| `bible_generated` \| `chapter_inferred` \| `ai_generated`（`auto_inferred` 仅 API 兼容，持久化映射为 `chapter_inferred`） |
 | `subject_entity_id` | TEXT NULL | 可选：绑定 Bible 人物/地点等实体 id，便于与设定对齐 |
 | `object_entity_id` | TEXT NULL | 同上 |
 
 **规则**：
 
 - **检索与图谱绘制**：默认仍用 `subject` / `predicate` / `object`；`entity_type` / `importance` 等用于 UI 分面。
-- **推断与 Bible 写入**：必须写 `source_type` + `confidence`（推断可 0~1）；`chapter_id` 或 `first_appearance` / `related_chapters` 与章节溯源保持一致（实现阶段二选一语义写清楚即可，禁止两字段含义重复且不文档化）。
-- **扩展**：未预见字段进 `attributes`，避免无限制加列。
+- **推断与 Bible 写入**：必须写 `source_type` + `confidence`（推断可 0~1）；主出处用 `chapter_number`（外键至 `chapters`），**额外**章节用 `triple_more_chapters`；应用层 DTO 仍可用 `chapter_id` / `related_chapters` 命名，入库时映射到列与子表。
+- **扩展**：未预见标量进 `triple_attr`（`attr_value` 一律 TEXT），避免无限制加列。
+- **章节元素 ↔ 推断三元组**：规范化表 `triple_provenance`（`rule_id`、`story_node_id`、`chapter_element_id`）；叙事知识 PUT 采用**分源合并**，保留 `chapter_inferred` / `bible_generated` / `ai_generated`，避免整本删库式覆盖。
 
 **废弃**：`domain.bible.triple.Triple` 作为 **持久化模型** 废弃；若需过渡，仅在内存中转换为 `KnowledgeTriple` 后写入，不再调用 `TripleRepository.save`。
 
