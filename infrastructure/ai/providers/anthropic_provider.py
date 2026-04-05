@@ -52,8 +52,8 @@ class AnthropicProvider(BaseProvider):
             RuntimeError: 当 API 调用失败或返回空内容时
         """
         try:
-            # 调用 Anthropic API
-            response = self.client.messages.create(
+            # 使用 async_client 避免阻塞 asyncio 事件循环
+            response = await self.async_client.messages.create(
                 model=config.model,
                 temperature=config.temperature,
                 max_tokens=config.max_tokens,
@@ -77,10 +77,8 @@ class AnthropicProvider(BaseProvider):
             return GenerationResult(content=content, token_usage=token_usage)
 
         except RuntimeError:
-            # 重新抛出我们自己的异常
             raise
         except Exception as e:
-            # 转换第三方异常为通用异常，避免暴露实现细节
             raise RuntimeError(f"Failed to generate text: {str(e)}") from e
 
     async def stream_generate(
