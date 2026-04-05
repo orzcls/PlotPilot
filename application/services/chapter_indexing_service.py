@@ -36,6 +36,8 @@ class ChapterIndexingService:
         """
         self._vector_store = vector_store
         self._embedding_service = embedding_service
+        # 动态获取 embedding 维度
+        self._embedding_dimension = embedding_service.get_dimension()
 
     def _get_collection_name(self, novel_id: str) -> str:
         """获取 collection 名称
@@ -63,10 +65,10 @@ class ChapterIndexingService:
         existing_collections = await self._vector_store.list_collections()
 
         if collection_name not in existing_collections:
-            # 创建新 collection
+            # 创建新 collection，使用动态维度
             await self._vector_store.create_collection(
                 collection=collection_name,
-                dimension=self.EMBEDDING_DIMENSION
+                dimension=self._embedding_dimension
             )
 
     async def index_chapter_summary(

@@ -247,25 +247,44 @@ def get_consistency_checker() -> ConsistencyChecker:
 
 
 def get_embedding_service():
-    """获取 Embedding 服务（需要 QDRANT_ENABLED=true 且 OPENAI_API_KEY）。
+    """获取 Embedding 服务
 
-    两个条件都满足时返回 OpenAIEmbeddingService，否则静默返回 None。
+    根据环境变量选择服务类型：
+    - EMBEDDING_SERVICE=local: 使用本地模型（BAAI/bge-small-zh-v1.5）
+    - EMBEDDING_SERVICE=openai: 使用 OpenAI API（需要 OPENAI_API_KEY）
+    - 默认: local
+
+    如果 VECTOR_STORE_ENABLED=false，返回 None。
     """
-    if os.getenv("QDRANT_ENABLED", "").lower() != "true":
+    if os.getenv("VECTOR_STORE_ENABLED", "true").lower() != "true":
         return None
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("QDRANT_ENABLED=true 但 OPENAI_API_KEY 未设置，向量检索已禁用")
-        return None
-    from infrastructure.ai.openai_embedding_service import OpenAIEmbeddingService
+
+    service_type = os.getenv("EMBEDDING_SERVICE", "local").lower()
+
     try:
-        return OpenAIEmbeddingService()
+        if service_type == "local":
+            from infrastructure.ai.local_embedding_service import LocalEmbeddingService
+            model_path = os.getenv("EMBEDDING_MODEL_PATH", "BAAI/bge-small-zh-v1.5")
+            use_gpu = os.getenv("EMBEDDING_USE_GPU", "true").lower() == "true"
+            logger.info(f"Using local embedding service: {model_path}, GPU: {use_gpu}")
+            return LocalEmbeddingService(model_name=model_path, use_gpu=use_gpu)
+        elif service_type == "openai":
+            if not os.getenv("OPENAI_API_KEY"):
+                logger.warning("EMBEDDING_SERVICE=openai 但 OPENAI_API_KEY 未设置，向量检索已禁用")
+                return None
+            from infrastructure.ai.openai_embedding_service import OpenAIEmbeddingService
+            logger.info("Using OpenAI embedding service")
+            return OpenAIEmbeddingService()
+        else:
+            logger.warning(f"Unknown EMBEDDING_SERVICE: {service_type}, 向量检索已禁用")
+            return None
     except Exception as e:
         logger.warning("EmbeddingService 初始化失败: %s", e)
         return None
 
 
 def get_chapter_indexing_service():
-    """获取章节索引服务（依赖 Qdrant + Embedding，任一不可用则返回 None）。"""
+    """获取章节索引服务（依赖 VectorStore + Embedding，任一不可用则返回 None）。"""
     vs = get_vector_store()
     es = get_embedding_service()
     if vs is None or es is None:
@@ -274,36 +293,47 @@ def get_chapter_indexing_service():
     return ChapterIndexingService(vs, es)
 
 
-def get_vector_store() -> Optional["QdrantVectorStore"]:
+def get_vector_store() -> Optional[VectorStore]:
     """获取向量存储
 
-    根据环境变量返回 QdrantVectorStore 实例或 None。
+    根据环境变量返回 ChromaDB 或 Qdrant 实例。
 
     环境变量配置：
-    - QDRANT_ENABLED: 是否启用 Qdrant（"true" 启用，其他值禁用）
-    - QDRANT_HOST: Qdrant 服务器地址（默认 "localhost"）
-    - QDRANT_PORT: Qdrant 服务器端口（默认 6333）
-    - QDRANT_API_KEY: Qdrant API 密钥（可选）
-
-    本地启动 Qdrant：
-        docker run -p 6333:6333 qdrant/qdrant
+    - VECTOR_STORE_ENABLED: 是否启用向量存储（"true" 启用，默认 "true"）
+    - VECTOR_STORE_TYPE: 向量存储类型（"chromadb" 或 "qdrant"，默认 "chromadb"）
+    - VECTOR_STORE_PATH: ChromaDB 本地存储路径（默认 "./data/chromadb"）
+    - QDRANT_HOST: Qdrant 服务器地址（默认 "localhost"，仅 qdrant 类型）
+    - QDRANT_PORT: Qdrant 服务器端口（默认 6333，仅 qdrant 类型）
+    - QDRANT_API_KEY: Qdrant API 密钥（可选，仅 qdrant 类型）
 
     Returns:
-        QdrantVectorStore 实例或 None
+        VectorStore 实例或 None
     """
-    # 检查是否启用
-    enabled = os.getenv("QDRANT_ENABLED", "").lower() == "true"
+    # 检查是否启用（默认启用）
+    enabled = os.getenv("VECTOR_STORE_ENABLED", "true").lower() == "true"
     if not enabled:
         return None
 
-    # 读取配置
-    host = os.getenv("QDRANT_HOST", "localhost")
-    port = int(os.getenv("QDRANT_PORT", "6333"))
-    api_key = os.getenv("QDRANT_API_KEY")
+    # 读取存储类型（默认 ChromaDB）
+    store_type = os.getenv("VECTOR_STORE_TYPE", "chromadb").lower()
 
-    # 导入并创建实例
-    from infrastructure.ai.qdrant_vector_store import QdrantVectorStore
-    return QdrantVectorStore(host=host, port=port, api_key=api_key)
+    try:
+        if store_type == "chromadb":
+            from infrastructure.ai.chromadb_vector_store import ChromaDBVectorStore
+            persist_dir = os.getenv("VECTOR_STORE_PATH", "./data/chromadb")
+            return ChromaDBVectorStore(persist_directory=persist_dir)
+        elif store_type == "qdrant":
+            from infrastructure.ai.qdrant_vector_store import QdrantVectorStore
+            host = os.getenv("QDRANT_HOST", "localhost")
+            port = int(os.getenv("QDRANT_PORT", "6333"))
+            api_key = os.getenv("QDRANT_API_KEY")
+            return QdrantVectorStore(host=host, port=port, api_key=api_key)
+        else:
+            logger.warning(f"Unknown VECTOR_STORE_TYPE: {store_type}, vector store disabled")
+            return None
+    except Exception as e:
+        logger.warning(f"Failed to initialize vector store: {e}")
+        return None
 
 
 def get_relationship_engine() -> RelationshipEngine:
