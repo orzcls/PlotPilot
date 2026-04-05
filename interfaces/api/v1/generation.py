@@ -28,10 +28,11 @@ from interfaces.api.dependencies import (
     get_chapter_service,
     get_auto_bible_generator,
     get_auto_knowledge_generator,
-    get_macro_planning_service,
 )
 from application.services.story_structure_ai_service import StoryStructureAIService
+from application.services.continuous_planning_service import ContinuousPlanningService
 from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
+from infrastructure.persistence.database.chapter_element_repository import ChapterElementRepository
 from application.paths import DATA_DIR
 from application.services.auto_bible_generator import AutoBibleGenerator
 from application.services.auto_knowledge_generator import AutoKnowledgeGenerator
@@ -50,6 +51,28 @@ def get_structure_ai_service() -> StoryStructureAIService:
     bible_service = BibleService(get_bible_repository())
 
     return StoryStructureAIService(repository, llm_service=None, bible_service=bible_service)
+
+
+def get_continuous_planning_service() -> ContinuousPlanningService:
+    """获取持续规划服务"""
+    db_path = str(DATA_DIR / "aitext.db")
+    story_node_repo = StoryNodeRepository(db_path)
+    chapter_element_repo = ChapterElementRepository(db_path)
+
+    from application.services.bible_service import BibleService
+    from interfaces.api.dependencies import get_bible_repository, get_llm_service, get_chapter_repository
+
+    bible_service = BibleService(get_bible_repository())
+    llm_service = get_llm_service()
+    chapter_repository = get_chapter_repository()
+
+    return ContinuousPlanningService(
+        story_node_repo=story_node_repo,
+        chapter_element_repo=chapter_element_repo,
+        llm_service=llm_service,
+        bible_service=bible_service,
+        chapter_repository=chapter_repository
+    )
 
 
 # Request/Response Models
@@ -694,7 +717,7 @@ async def plan_novel(
     bible_service = Depends(get_bible_service),
     novel_service = Depends(get_novel_service),
     chapter_service = Depends(get_chapter_service),
-    macro_planning_service = Depends(get_macro_planning_service)
+    continuous_planning_service: ContinuousPlanningService = Depends(get_continuous_planning_service)
 ):
     """大纲规划：根据世界观、文约、初始地图、初始角色，AI 自主生成部-卷-幕结构
 
@@ -728,39 +751,20 @@ async def plan_novel(
             )
         logger.info(f"[PlanNovel] Novel found: {novel.title}")
 
-        # 获取 Bible 上下文（世界观、文约、初始地图、初始角色）
-        bible_context = None
-        try:
-            logger.info(f"[PlanNovel] Getting Bible context")
-            bible = bible_service.get_bible(novel_id)
-            if bible:
-                bible_context = {
-                    "worldview": bible.worldview or "",
-                    "writing_guidelines": bible.writing_guidelines or "",
-                    "characters": [{"name": c.name, "description": c.description} for c in bible.characters],
-                    "locations": [{"name": loc.name, "description": loc.description} for loc in bible.locations],
-                    "conflicts": []  # TODO: 从 Bible 中提取冲突
-                }
-                logger.info(f"[PlanNovel] Bible context: {len(bible_context.get('characters', []))} chars, {len(bible_context.get('locations', []))} locs")
-        except Exception as e:
-            logger.warning(f"Failed to get Bible context: {e}")
-
         # 生成宏观结构（部-卷-幕），AI 自主决定数量
         logger.info(f"[PlanNovel] Calling generate_macro_plan (AI autonomous planning)")
-        macro_plan = await macro_planning_service.generate_macro_plan(
+        macro_plan = await continuous_planning_service.generate_macro_plan(
             novel_id=novel_id,
-            premise=novel.premise or novel.title,
             target_chapters=novel.target_chapters,
-            structure_preference=None,  # 不限制结构，让 AI 自主决定
-            bible_context=bible_context
+            structure_preference=None  # 不限制结构，让 AI 自主决定
         )
-        logger.info(f"[PlanNovel] Macro plan generated with {len(macro_plan.get('structure', []))} parts")
+        logger.info(f"[PlanNovel] Macro plan generated")
 
         # 确认并创建结构节点
         logger.info(f"[PlanNovel] Calling confirm_macro_plan")
-        confirm_result = await macro_planning_service.confirm_macro_plan(
+        confirm_result = await continuous_planning_service.confirm_macro_plan(
             novel_id=novel_id,
-            structure=macro_plan["structure"]
+            structure=macro_plan.get("structure", [])
         )
 
         logger.info(f"Created {confirm_result['created_nodes']} structure nodes")

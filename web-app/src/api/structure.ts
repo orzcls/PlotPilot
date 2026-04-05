@@ -104,23 +104,5 @@ export const structureApi = {
   updateChapterRanges: (novelId: string) =>
     apiClient.post<{ success: boolean }>(
       `/novels/${novelId}/structure/update-ranges`
-    ),
-
-  /**
-   * 创建默认结构
-   */
-  createDefaultStructure: (novelId: string, totalChapters: number = 100) =>
-    apiClient.post<{ success: boolean; structure: StoryTree }>(
-      `/novels/${novelId}/structure/create-default`,
-      null,
-      { params: { total_chapters: totalChapters } }
-    ),
-
-  /**
-   * 初始化叙事结构（AI 生成第一幕）
-   */
-  initializeStructure: (novelId: string) =>
-    apiClient.post<{ success: boolean; message: string; nodes_created: number; act_id?: string; act_title?: string }>(
-      `/novels/${novelId}/structure/initialize`
     )
 }

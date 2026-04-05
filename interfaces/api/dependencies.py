@@ -43,7 +43,6 @@ from application.services.auto_bible_generator import AutoBibleGenerator
 from application.services.auto_knowledge_generator import AutoKnowledgeGenerator
 from application.services.state_extractor import StateExtractor
 from application.services.state_updater import StateUpdater
-from application.services.macro_planning_service import MacroPlanningService
 from application.workflows.auto_novel_generation_workflow import AutoNovelGenerationWorkflow
 from application.services.hosted_write_service import HostedWriteService
 from domain.novel.services.consistency_checker import ConsistencyChecker
@@ -484,29 +483,6 @@ def get_state_updater() -> StateUpdater:
         timeline_repository=get_timeline_repository(),
         storyline_repository=get_storyline_repository(),
         knowledge_service=get_knowledge_service()
-    )
-
-
-def get_macro_planning_service() -> MacroPlanningService:
-    """获取宏观规划服务
-
-    Returns:
-        MacroPlanningService 实例
-    """
-    from infrastructure.ai.llm_client import LLMClient
-
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_provider = AnthropicProvider(settings)
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_provider = MockProvider()
-
-    llm_client = LLMClient(provider=llm_provider)
-
-    return MacroPlanningService(
-        story_node_repo=get_story_node_repository(),
-        llm_client=llm_client
     )
 
 
