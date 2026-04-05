@@ -32,6 +32,17 @@
       <n-tab-pane name="macro-refactor" tab="重构扫描">
         <MacroRefactorPanel :slug="slug" />
       </n-tab-pane>
+
+      <n-tab-pane name="chapter-elements" tab="章节元素">
+        <ChapterElementPanel
+          :slug="slug"
+          :current-chapter-number="currentChapter?.number ?? null"
+        />
+      </n-tab-pane>
+
+      <n-tab-pane name="sandbox" tab="对话沙盒">
+        <SandboxDialoguePanel :slug="slug" />
+      </n-tab-pane>
     </n-tabs>
 
     <!-- Chapter Info Card -->
@@ -74,6 +85,8 @@ import PlotArcPanel from './PlotArcPanel.vue'
 import TimelinePanel from './TimelinePanel.vue'
 import ForeshadowLedgerPanel from './ForeshadowLedgerPanel.vue'
 import MacroRefactorPanel from './MacroRefactorPanel.vue'
+import ChapterElementPanel from './ChapterElementPanel.vue'
+import SandboxDialoguePanel from './SandboxDialoguePanel.vue'
 
 interface Chapter {
   id: number

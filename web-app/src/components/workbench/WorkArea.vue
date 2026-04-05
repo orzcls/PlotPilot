@@ -54,6 +54,9 @@
               <n-button size="small" secondary @click="openTensionModal" title="卡关时分析张力缺口，获得突破建议">
                 ⚡ 卡关突破
               </n-button>
+              <n-button size="small" secondary @click="handleContinuePlanning" :disabled="!currentChapter" title="章节写完后检测当前幕进度，决定是否创建下一幕">
+                🎭 续规划
+              </n-button>
             </n-space>
           </n-space>
         </div>
@@ -395,6 +398,75 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- AI 续规划弹窗 -->
+    <n-modal
+      v-model:show="showContinueModal"
+      preset="card"
+      title="🎭 AI 续规划"
+      style="width: min(520px, 96vw)"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <template #header-extra>
+        <n-text depth="3" style="font-size:12px">检测当前幕进度，决定是否需要创建下一幕</n-text>
+      </template>
+
+      <n-spin :show="continueLoading" description="正在分析幕结构…">
+        <n-space v-if="continueResult" vertical :size="16">
+          <!-- 幕进度 -->
+          <n-card size="small" :bordered="false" style="background: var(--n-color-modal)">
+            <n-space vertical :size="10">
+              <n-space align="center" :size="8">
+                <n-text strong>当前幕：</n-text>
+                <n-text>{{ continueResult.current_act_title || continueResult.current_act_id || '未知' }}</n-text>
+              </n-space>
+              <n-space align="center" :size="8" v-if="continueResult.completed_chapters != null">
+                <n-text depth="3">幕内进度：</n-text>
+                <n-text>{{ continueResult.completed_chapters }} / {{ continueResult.total_chapters ?? '?' }} 章</n-text>
+              </n-space>
+              <n-text v-if="continueResult.progress_message" depth="3">{{ continueResult.progress_message }}</n-text>
+              <n-text v-if="continueResult.message" depth="3">{{ continueResult.message }}</n-text>
+            </n-space>
+          </n-card>
+
+          <!-- 状态徽章 -->
+          <n-space :size="10">
+            <n-tag :type="continueResult.is_act_complete ? 'success' : 'info'" round>
+              {{ continueResult.is_act_complete ? '✅ 本幕已写完' : '⏳ 本幕尚未完成' }}
+            </n-tag>
+            <n-tag v-if="continueResult.needs_next_act" type="warning" round>
+              🎬 建议创建下一幕
+            </n-tag>
+          </n-space>
+
+          <!-- 创建下一幕 -->
+          <n-alert v-if="continueResult.needs_next_act && continueResult.current_act_id" type="warning" :show-icon="true">
+            AI 判断当前幕已完成，建议创建下一幕以继续故事规划。
+            <template #action>
+              <n-button
+                type="warning"
+                size="small"
+                :loading="creatingNextAct"
+                @click="handleCreateNextAct"
+              >
+                创建下一幕
+              </n-button>
+            </template>
+          </n-alert>
+
+          <n-alert v-else-if="!continueResult.needs_next_act" type="success" :show-icon="true">
+            当前幕还有规划章节未写完，继续创作当前幕即可。
+          </n-alert>
+        </n-space>
+        <n-empty v-else-if="!continueLoading" description="分析结果为空" />
+      </n-spin>
+
+      <template #action>
+        <n-space justify="end">
+          <n-button @click="showContinueModal = false">关闭</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -412,6 +484,8 @@ import type { ContextPreviewResult } from '../../api/workflow'
 import { chapterApi } from '../../api/chapter'
 import { tensionApi } from '../../api/tools'
 import type { TensionDiagnosis } from '../../api/tools'
+import { planningApi } from '../../api/planning'
+import type { ContinuePlanResult } from '../../api/planning'
 
 interface Chapter {
   id: number
@@ -473,6 +547,43 @@ const showTensionModal = ref(false)
 const tensionLoading = ref(false)
 const tensionStuckReason = ref('')
 const tensionResult = ref<TensionDiagnosis | null>(null)
+
+// AI 续规划
+const showContinueModal = ref(false)
+const continueLoading = ref(false)
+const continueResult = ref<ContinuePlanResult | null>(null)
+const creatingNextAct = ref(false)
+
+const handleContinuePlanning = async () => {
+  if (!currentChapter.value) return
+  continueLoading.value = true
+  continueResult.value = null
+  showContinueModal.value = true
+  try {
+    continueResult.value = await planningApi.continuePlanning(props.slug, {
+      current_chapter: currentChapter.value.number,
+    })
+  } catch {
+    message.error('续规划失败，请确认 AI 密钥已配置')
+    showContinueModal.value = false
+  } finally {
+    continueLoading.value = false
+  }
+}
+
+const handleCreateNextAct = async () => {
+  if (!continueResult.value?.current_act_id) return
+  creatingNextAct.value = true
+  try {
+    await planningApi.createNextAct(continueResult.value.current_act_id)
+    message.success('下一幕已创建，请刷新结构树')
+    showContinueModal.value = false
+  } catch {
+    message.error('创建下一幕失败')
+  } finally {
+    creatingNextAct.value = false
+  }
+}
 
 const openTensionModal = () => {
   tensionResult.value = null
