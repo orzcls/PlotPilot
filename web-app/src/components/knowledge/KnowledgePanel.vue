@@ -92,12 +92,82 @@
             <n-button :type="knowledgeView === 'json' ? 'primary' : 'default'" @click="knowledgeView = 'json'">
               JSON
             </n-button>
+            <n-button :type="knowledgeView === 'triples' ? 'primary' : 'default'" @click="knowledgeView = 'triples'; loadTriples()">
+              三元组管理
+            </n-button>
           </n-button-group>
         </div>
 
         <div class="kp-edit-content">
           <KnowledgeGraphView v-if="knowledgeView === 'graph'" :slug="slug" @reload="reloadKnowledge" />
           <KnowledgeJsonView v-if="knowledgeView === 'json'" :slug="slug" @reload="reloadKnowledge" />
+
+          <!-- 三元组管理 -->
+          <div v-if="knowledgeView === 'triples'" class="kp-triples-container">
+            <!-- 统计 + 操作 -->
+            <n-space justify="space-between" align="center" class="kp-triples-toolbar">
+              <n-space :size="6" align="center" wrap>
+                <template v-if="kgStats">
+                  <n-tag type="info" size="small" round>共 {{ kgStats.total_triples }} 条</n-tag>
+                  <n-tag size="small" round>高置信 {{ kgStats.confidence_distribution.high }}</n-tag>
+                  <n-tag type="warning" size="small" round>中 {{ kgStats.confidence_distribution.medium }}</n-tag>
+                  <n-tag type="error" size="small" round>低 {{ kgStats.confidence_distribution.low }}</n-tag>
+                </template>
+              </n-space>
+              <n-space :size="6">
+                <n-button size="tiny" secondary :loading="inferring" @click="inferAll">全书推断</n-button>
+                <n-select
+                  v-model:value="tripleFilter"
+                  :options="tripleFilterOptions"
+                  size="tiny"
+                  style="width:110px"
+                  @update:value="loadTriples"
+                />
+              </n-space>
+            </n-space>
+
+            <n-spin :show="triplesLoading">
+              <n-space v-if="triples.length" vertical :size="6" class="kp-triples-list">
+                <div
+                  v-for="t in triples"
+                  :key="t.id"
+                  class="triple-row"
+                >
+                  <div class="triple-body">
+                    <n-tag size="tiny" round :type="t.source_type === 'manual' ? 'success' : t.source_type === 'chapter_inferred' ? 'info' : 'default'">
+                      {{ t.source_type }}
+                    </n-tag>
+                    <span class="triple-text">
+                      <strong>{{ t.subject }}</strong>
+                      <em> {{ t.predicate }} </em>
+                      <strong>{{ t.object }}</strong>
+                    </span>
+                    <n-text depth="3" style="font-size:11px">
+                      {{ (t.confidence * 100).toFixed(0) }}%
+                    </n-text>
+                  </div>
+                  <n-space :size="4" class="triple-actions">
+                    <n-button
+                      v-if="t.source_type !== 'manual'"
+                      size="tiny"
+                      type="success"
+                      secondary
+                      :loading="confirmingId === t.id"
+                      @click="doConfirmTriple(t)"
+                    >确认</n-button>
+                    <n-button
+                      size="tiny"
+                      type="error"
+                      secondary
+                      :loading="deletingId === t.id"
+                      @click="doDeleteTriple(t)"
+                    >删除</n-button>
+                  </n-space>
+                </div>
+              </n-space>
+              <n-empty v-else-if="!triplesLoading" description="暂无三元组，可点击「全书推断」自动生成" />
+            </n-spin>
+          </div>
         </div>
       </div>
 
@@ -343,6 +413,8 @@ import { chapterApi } from '../../api/chapter'
 import { knowledgeApi } from '../../api/knowledge'
 import { narrativeStateApi } from '../../api/tools'
 import type { EntityState } from '../../api/tools'
+import { knowledgeGraphApi } from '../../api/knowledgeGraph'
+import type { TripleDTO, KGStatistics } from '../../api/knowledgeGraph'
 import CastGraphCompact from '../graphs/CastGraphCompact.vue'
 import LocationGraphCompact from '../graphs/LocationGraphCompact.vue'
 import KnowledgeGraphView from './KnowledgeGraphView.vue'
@@ -358,7 +430,6 @@ const message = useMessage()
 const graphFilter = ref<'character' | 'location'>('character')
 
 // 知识库编辑相关
-const knowledgeView = ref<'graph' | 'json'>('graph')
 const knowledgeTableOpen = ref(false)
 const knowledgeLoading = ref(false)
 
@@ -382,6 +453,80 @@ const saving = ref(false)
 const generating = ref(false)
 const sideTab = ref<'search' | 'narrative' | 'graph'>('search')
 const subTab = ref<'premise' | 'chapters' | 'entity-state'>('premise')
+const knowledgeView = ref<'graph' | 'json' | 'triples'>('graph')
+
+// 三元组管理
+const triples = ref<TripleDTO[]>([])
+const kgStats = ref<KGStatistics | null>(null)
+const triplesLoading = ref(false)
+const inferring = ref(false)
+const confirmingId = ref<string | null>(null)
+const deletingId = ref<string | null>(null)
+const tripleFilter = ref<string | undefined>(undefined)
+const tripleFilterOptions = [
+  { label: '全部', value: undefined },
+  { label: '手动', value: 'manual' },
+  { label: '推断', value: 'chapter_inferred' },
+  { label: 'AI生成', value: 'ai_generated' },
+]
+
+const loadTriples = async () => {
+  triplesLoading.value = true
+  try {
+    const [tripleRes, statsRes] = await Promise.all([
+      knowledgeGraphApi.getTriples(props.slug, tripleFilter.value),
+      knowledgeGraphApi.getStatistics(props.slug),
+    ])
+    triples.value = tripleRes.data.triples
+    kgStats.value = statsRes.data
+  } catch {
+    message.error('加载三元组失败')
+  } finally {
+    triplesLoading.value = false
+  }
+}
+
+const inferAll = async () => {
+  inferring.value = true
+  try {
+    const res = await knowledgeGraphApi.inferNovel(props.slug)
+    message.success('全书推断完成')
+    console.log('推断结果:', res.data)
+    await loadTriples()
+  } catch {
+    message.error('推断失败')
+  } finally {
+    inferring.value = false
+  }
+}
+
+const doConfirmTriple = async (t: TripleDTO) => {
+  confirmingId.value = t.id
+  try {
+    await knowledgeGraphApi.confirmTriple(t.id)
+    message.success('已确认为手动三元组')
+    t.source_type = 'manual'
+    t.confidence = 1.0
+  } catch {
+    message.error('确认失败')
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+const doDeleteTriple = async (t: TripleDTO) => {
+  deletingId.value = t.id
+  try {
+    await knowledgeGraphApi.deleteTriple(t.id)
+    message.success('已删除')
+    triples.value = triples.value.filter(x => x.id !== t.id)
+    if (kgStats.value) kgStats.value.total_triples -= 1
+  } catch {
+    message.error('删除失败')
+  } finally {
+    deletingId.value = null
+  }
+}
 
 // 实体状态查询
 const entityStateId = ref('')
@@ -827,6 +972,42 @@ onMounted(() => {
 .kp-add-ch {
   margin-top: 4px;
 }
+
+.kp-triples-container {
+  padding: 8px 0;
+}
+.kp-triples-toolbar {
+  margin-bottom: 8px;
+}
+.kp-triples-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.triple-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(15,23,42,0.03);
+  font-size: 12px;
+}
+.triple-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.triple-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.triple-actions { flex-shrink: 0; }
 
 .entity-state-grid {
   display: grid;

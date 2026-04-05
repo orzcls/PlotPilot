@@ -3,7 +3,7 @@
  * 后端路由实现见 `docs/superpowers/plans/2026-04-02-subproject-8-frontend-extensions.md`
  */
 import { apiClient } from './config'
-import type { JobCreateResponse, JobStatusResponse } from '../types/api'
+import type { JobStatusResponse } from '../types/api'
 
 export interface StorylineDTO {
   id: string
@@ -267,49 +267,11 @@ export const workflowApi = {
   createPlotArc: (novelId: string, data: { key_points: PlotPointDTO[] }) =>
     apiClient.post<PlotArcDTO>(`/novels/${novelId}/plot-arc`, data) as unknown as Promise<PlotArcDTO>,
 
-  /**
-   * 以下 Job 路由 **后端尚未实现**（`interfaces` 无 `/jobs`），调用会 404。
-   * 单章/流式：`generateChapterWithContext` / `consumeGenerateChapterStream`；
-   * 多章托管：`consumeHostedWriteStream`（`/hosted-write-stream`）。
-   */
-  /** POST /api/v1/novels/{novel_id}/jobs/plan */
-  startPlanJob: (novelId: string, dryRun = false, mode: 'initial' | 'revise' = 'initial') =>
-    apiClient.post<JobCreateResponse>(`/novels/${novelId}/jobs/plan`, {
-      dry_run: dryRun,
-      mode,
-    }) as unknown as Promise<JobCreateResponse>,
-
-  /** POST /api/v1/novels/{novel_id}/jobs/write */
-  startWriteJob: (
-    novelId: string,
-    from: number,
-    to?: number,
-    dryRun = false,
-    continuity = false
-  ) =>
-    apiClient.post<JobCreateResponse>(`/novels/${novelId}/jobs/write`, {
-      from_chapter: from,
-      to_chapter: to,
-      dry_run: dryRun,
-      continuity,
-    }) as unknown as Promise<JobCreateResponse>,
-
-  /** POST /api/v1/novels/{novel_id}/jobs/run */
-  startRunJob: (novelId: string, dryRun = false, continuity = false) =>
-    apiClient.post<JobCreateResponse>(`/novels/${novelId}/jobs/run`, {
-      dry_run: dryRun,
-      continuity,
-    }) as unknown as Promise<JobCreateResponse>,
-
-  /** POST /api/v1/novels/{novel_id}/jobs/export */
-  exportBook: (novelId: string) =>
-    apiClient.post<unknown>(`/novels/${novelId}/jobs/export`, {}) as unknown as Promise<unknown>,
-
-  /** GET /api/v1/jobs/{job_id} */
+  /** GET /api/v1/jobs/{job_id} — JobStatusIndicator 使用 */
   getJobStatus: (jobId: string) =>
     apiClient.get<JobStatusResponse>(`/jobs/${jobId}`) as unknown as Promise<JobStatusResponse>,
 
-  /** POST /api/v1/jobs/{job_id}/cancel */
+  /** POST /api/v1/jobs/{job_id}/cancel — JobStatusIndicator 使用 */
   cancelJob: (jobId: string) =>
     apiClient.post<{ ok: boolean }>(`/jobs/${jobId}/cancel`, {}) as unknown as Promise<{ ok: boolean }>,
 

@@ -55,7 +55,25 @@
         />
       </div>
     </n-scrollbar>
+
+    <!-- 底部操作区 -->
+    <div class="sidebar-foot">
+      <n-button
+        size="small"
+        secondary
+        block
+        @click="showMacroPlan = true"
+      >
+        📐 宏观结构规划
+      </n-button>
+    </div>
   </aside>
+
+  <MacroPlanModal
+    v-model:show="showMacroPlan"
+    :novel-id="slug"
+    @confirmed="emit('refresh')"
+  />
 </template>
 
 <script setup lang="ts">
@@ -63,6 +81,7 @@ import { ref, type ComponentPublicInstance } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
 import { workflowApi } from '@/api/workflow'
 import StoryStructureTree from '@/components/StoryStructureTree.vue'
+import MacroPlanModal from '@/components/workbench/MacroPlanModal.vue'
 
 interface Chapter {
   id: number
@@ -100,6 +119,7 @@ const viewModeOptions = [
 
 const planning = ref(false)
 const extending = ref(false)
+const showMacroPlan = ref(false)
 
 const storyTreeRef = ref<ComponentPublicInstance<{ loadTree: () => Promise<void> }> | null>(null)
 
@@ -226,6 +246,11 @@ const handleExtendOutline = () => {
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
+}
+
+.sidebar-foot {
+  padding: 8px 10px;
+  border-top: 1px solid var(--n-divider-color, rgba(0,0,0,.06));
 }
 
 .sidebar-empty {
