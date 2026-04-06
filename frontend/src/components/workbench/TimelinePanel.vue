@@ -3,11 +3,11 @@
     <header class="panel-header">
       <div class="header-main">
         <div class="title-row">
-          <h3 class="panel-title">时间线管理</h3>
-          <n-tag size="small" round :bordered="false">Timeline</n-tag>
+          <h3 class="panel-title">剧情时间轴</h3>
+          <n-tag size="small" round :bordered="false">叙事事件</n-tag>
         </div>
         <p class="panel-lead">
-          管理故事内的<strong>时间流逝与事件序列</strong>，追踪绝对时间、相对时间和时间跨度。
+          管理故事<strong>世界内</strong>的时间流逝与事件顺序（叙事用）。<strong>不是</strong>「版本快照 / 回滚」——后者见叙事脉络中的<strong>版本快照</strong>。
         </p>
       </div>
       <n-space class="header-actions" :size="8" align="center">

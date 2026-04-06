@@ -35,7 +35,7 @@
       </n-tab-pane>
     </n-tabs>
 
-    <!-- 叙事脉络：故事线 / 情节弧 / 时间线 / 重构扫描 -->
+    <!-- 叙事脉络：故事线 / 情节弧 / 剧情时间轴 / 版本快照(占位) / 宏观诊断 -->
     <n-tabs
       v-if="activeGroup === 'narrative'"
       v-model:value="narrativeTab"
@@ -50,15 +50,18 @@
       <n-tab-pane name="plot-arc" tab="情节弧">
         <PlotArcPanel :slug="slug" />
       </n-tab-pane>
-      <n-tab-pane name="timeline" tab="时间线">
+      <n-tab-pane name="timeline" tab="剧情时间轴">
         <TimelinePanel :slug="slug" />
       </n-tab-pane>
-      <n-tab-pane name="macro-refactor" tab="重构扫描">
+      <n-tab-pane name="snapshots" tab="版本快照">
+        <SnapshotPlaceholderPanel :slug="slug" />
+      </n-tab-pane>
+      <n-tab-pane name="macro-refactor" tab="宏观诊断">
         <MacroRefactorPanel :slug="slug" />
       </n-tab-pane>
     </n-tabs>
 
-    <!-- 片场：绑定当前选中章 -->
+    <!-- 片场：对话沙盒 / 本章建议(占位) / 伏笔账本 -->
     <n-tabs
       v-if="activeGroup === 'tactical'"
       v-model:value="tacticalTab"
@@ -70,7 +73,13 @@
       <n-tab-pane name="sandbox" tab="对话沙盒">
         <SandboxDialoguePanel :slug="slug" />
       </n-tab-pane>
-      <n-tab-pane name="foreshadow" tab="伏笔">
+      <n-tab-pane name="foreshadow-suggestions" tab="本章建议">
+        <ForeshadowChapterSuggestionsPanel
+          :slug="slug"
+          :current-chapter-number="currentChapter?.number ?? null"
+        />
+      </n-tab-pane>
+      <n-tab-pane name="foreshadow" tab="伏笔账本">
         <ForeshadowLedgerPanel :slug="slug" />
       </n-tab-pane>
     </n-tabs>
@@ -88,13 +97,15 @@ import TimelinePanel from './TimelinePanel.vue'
 import ForeshadowLedgerPanel from './ForeshadowLedgerPanel.vue'
 import MacroRefactorPanel from './MacroRefactorPanel.vue'
 import SandboxDialoguePanel from './SandboxDialoguePanel.vue'
+import SnapshotPlaceholderPanel from './SnapshotPlaceholderPanel.vue'
+import ForeshadowChapterSuggestionsPanel from './ForeshadowChapterSuggestionsPanel.vue'
 
 /** 剧本基建组 */
 const FOUNDATION_TABS = new Set(['bible', 'worldbuilding', 'knowledge'])
 /** 叙事脉络组 */
-const NARRATIVE_TABS = new Set(['storylines', 'plot-arc', 'timeline', 'macro-refactor'])
+const NARRATIVE_TABS = new Set(['storylines', 'plot-arc', 'timeline', 'snapshots', 'macro-refactor'])
 /** 片场（章节元素已移至中栏 Tab） */
-const TACTICAL_TABS = new Set(['sandbox', 'foreshadow'])
+const TACTICAL_TABS = new Set(['sandbox', 'foreshadow-suggestions', 'foreshadow'])
 
 function resolveGroup(panel: string | undefined): 'foundation' | 'narrative' | 'tactical' {
   if (!panel) return 'foundation'

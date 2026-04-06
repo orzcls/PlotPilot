@@ -1,5 +1,8 @@
 <template>
   <div class="foreshadow-panel">
+    <n-alert type="default" :show-icon="true" class="ledger-sync-hint" style="margin-bottom: 10px">
+      与<strong>中栏 · 托管撰稿 · 监控大盘</strong>中的伏笔统计、列表使用<strong>同一套账本数据</strong>（foreshadow-ledger）；此处为编辑与核销入口。
+    </n-alert>
     <header class="panel-header">
       <div class="header-main">
         <div class="title-row">

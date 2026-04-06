@@ -1,5 +1,10 @@
 <template>
   <div class="autopilot-dashboard">
+    <n-alert type="default" :show-icon="false" class="monitor-copy-hint">
+      <n-text depth="3" style="font-size: 12px; line-height: 1.5">
+        <strong>监控说明</strong>：「文风」卡片为按<strong>角色声线</strong>的偏离监测。全书<strong>作者文风指纹</strong>与侧栏「剧本基建」规划为不同能力，与此处互补。
+      </n-text>
+    </n-alert>
     <!-- 监控网格 -->
     <div class="monitor-grid">
       <!-- 第一行：张力图表 + 实时日志 -->
@@ -71,6 +76,11 @@ function handleBreakerReset() {
 .autopilot-dashboard {
   height: 100%;
   overflow-y: auto;
+}
+
+.monitor-copy-hint {
+  margin: 0 4px 12px;
+  padding: 8px 12px;
 }
 
 .monitor-grid {

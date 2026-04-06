@@ -1,7 +1,12 @@
 <template>
   <div class="foreshadow-ledger">
     <div class="ledger-header">
-      <span class="ledger-title">📖 伏笔账本</span>
+      <div class="ledger-title-block">
+        <span class="ledger-title">📖 伏笔雷达</span>
+        <n-text depth="3" class="ledger-sub">
+          只读摘要；编辑请用右侧「片场 · 伏笔账本」（数据同源）
+        </n-text>
+      </div>
       <n-space :size="8">
         <n-tag :bordered="false" size="small" type="success">
           已回收 {{ collectedCount }}
@@ -180,6 +185,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { foreshadowApi } from '../../api/foreshadow'
 
 interface Foreshadow {
   id: string
@@ -254,36 +260,23 @@ function importanceTagType(importance: string): 'default' | 'info' | 'warning' |
   return map[importance] || 'default'
 }
 
-// 加载伏笔数据
+// 与片场「伏笔账本」共用 foreshadow-ledger，经 foreshadowApi 与监控统计对齐
 async function loadForeshadows() {
   loading.value = true
   try {
-    // 先获取统计数据
-    const statsRes = await fetch(`/api/v1/novels/${props.novelId}/monitor/foreshadow-stats`)
-    if (statsRes.ok) {
-      const stats = await statsRes.json()
-      // 使用统计数据更新计数（实际伏笔列表需要从 foreshadow-ledger API 获取）
-      // 这里暂时用统计数据模拟
-      foreshadows.value = []
-    }
-
-    // 获取详细伏笔列表
-    const listRes = await fetch(`/api/v1/novels/${props.novelId}/foreshadow-ledger`)
-    if (listRes.ok) {
-      const entries = await listRes.json()
-      // 转换新 API 格式到组件格式
-      foreshadows.value = entries.map((entry: any) => ({
-        id: entry.id,
-        description: entry.hidden_clue,
-        importance: 'medium', // API 暂不提供
-        planted_chapter: entry.chapter,
-        is_collected: entry.status === 'consumed',
-        collected_chapter: entry.consumed_at_chapter,
-        created_at: entry.created_at
-      }))
-    }
+    const entries = await foreshadowApi.list(props.novelId)
+    foreshadows.value = entries.map((entry) => ({
+      id: entry.id,
+      description: entry.hidden_clue,
+      importance: 'medium' as const,
+      planted_chapter: entry.chapter,
+      is_collected: entry.status === 'consumed',
+      collected_chapter: entry.consumed_at_chapter ?? undefined,
+      created_at: entry.created_at,
+    }))
   } catch (err) {
     console.error('Failed to load foreshadows:', err)
+    foreshadows.value = []
   } finally {
     loading.value = false
   }
@@ -335,15 +328,28 @@ onUnmounted(() => {
 
 .ledger-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+.ledger-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .ledger-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-color-1);
+}
+
+.ledger-sub {
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .ledger-body {

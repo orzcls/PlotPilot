@@ -3,11 +3,11 @@
     <header class="panel-header">
       <div class="header-main">
         <div class="title-row">
-          <h3 class="panel-title">宏观重构</h3>
-          <n-tag size="small" round :bordered="false">Macro Refactor</n-tag>
+          <h3 class="panel-title">宏观诊断</h3>
+          <n-tag size="small" round :bordered="false">Macro</n-tag>
         </div>
         <p class="panel-lead">
-          扫描人设冲突断点 → 生成重构提案 → 应用修改，<strong>系统性修复全书人设一致性</strong>。
+          当前为<strong>人设冲突断点扫描</strong>与重构提案。未来可在本入口下并入「全书逻辑审计」等子能力，无需再拆一级 Tab。
         </p>
       </div>
     </header>

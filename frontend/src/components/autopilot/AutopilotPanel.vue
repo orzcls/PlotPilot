@@ -303,14 +303,15 @@ onUnmounted(() => eventSource?.close())
 
 .ap-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 16px;
-  padding: 8px 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px 0;
 }
 
 .ap-cell {
   text-align: center;
-  padding: 8px;
+  padding: 6px 4px;
+  min-width: 0;
   background: rgba(255, 255, 255, 0.4);
   border-radius: 8px;
   transition: background 0.2s ease;
@@ -321,16 +322,25 @@ onUnmounted(() => eventSource?.close())
 }
 
 .ap-cell .label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--n-text-color-3);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   font-weight: 500;
+  line-height: 1.25;
 }
 
 .ap-cell .value {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--n-text-color);
   font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .ap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>
