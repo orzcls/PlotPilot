@@ -46,8 +46,8 @@ export function useWorkbench(options: UseWorkbenchOptions) {
   const chapterContent = ref('')
   const chapterLoading = ref(false)
 
-  // UI state that should be in components, not composable
-  const rightPanel = ref<'bible' | 'knowledge'>('bible')
+  /** 右栏子面板 id，与 SettingsPanel 中 codex / tactical 的 tab name 一致 */
+  const rightPanel = ref<string>('bible')
   const biblePanelKey = ref(0)
   const currentJobId = ref<string | null>(null)
 
@@ -56,8 +56,7 @@ export function useWorkbench(options: UseWorkbenchOptions) {
     return bookMeta.value.has_bible || bookMeta.value.has_outline
   })
 
-  // Methods
-  const setRightPanel = (panel: 'bible' | 'knowledge') => {
+  const setRightPanel = (panel: string) => {
     rightPanel.value = panel
   }
 
