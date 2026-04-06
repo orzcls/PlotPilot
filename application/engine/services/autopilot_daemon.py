@@ -53,21 +53,44 @@ class AutopilotDaemon:
 
     def run_forever(self):
         """守护进程主循环（事务最小化原则）"""
+        logger.info("=" * 80)
         logger.info("🚀 Autopilot Daemon Started")
+        logger.info(f"   Poll Interval: {self.poll_interval}s")
+        logger.info(f"   Circuit Breaker: {'Enabled' if self.circuit_breaker else 'Disabled'}")
+        logger.info(f"   Voice Drift Service: {'Enabled' if self.voice_drift_service else 'Disabled'}")
+        logger.info("=" * 80)
+
+        loop_count = 0
         while True:
+            loop_count += 1
+            loop_start = time.time()
+
             # 熔断器检查
             if self.circuit_breaker and self.circuit_breaker.is_open():
                 wait = self.circuit_breaker.wait_seconds()
-                logger.warning(f"熔断器打开，暂停 {wait:.0f}s")
+                logger.warning(f"⚠️  熔断器打开，暂停 {wait:.0f}s")
                 time.sleep(min(wait, self.poll_interval))
                 continue
 
             try:
                 active_novels = self._get_active_novels()  # 快速只读查询
-                for novel in active_novels:
-                    asyncio.run(self._process_novel(novel))
+
+                if loop_count % 10 == 1:  # 每10轮（约50秒）记录一次状态
+                    logger.info(f"🔄 Loop #{loop_count}: 发现 {len(active_novels)} 本活跃小说")
+
+                if active_novels:
+                    for novel in active_novels:
+                        novel_start = time.time()
+                        asyncio.run(self._process_novel(novel))
+                        novel_elapsed = time.time() - novel_start
+                        logger.debug(f"   [{novel.novel_id}] 处理耗时: {novel_elapsed:.2f}s")
+
             except Exception as e:
-                logger.error(f"Daemon 顶层异常: {e}", exc_info=True)
+                logger.error(f"❌ Daemon 顶层异常: {e}", exc_info=True)
+
+            loop_elapsed = time.time() - loop_start
+            if loop_elapsed > self.poll_interval * 2:
+                logger.warning(f"⏱️  Loop #{loop_count} 耗时过长: {loop_elapsed:.2f}s")
 
             time.sleep(self.poll_interval)
 
@@ -78,19 +101,28 @@ class AutopilotDaemon:
     async def _process_novel(self, novel: Novel):
         """处理单个小说（全流程）"""
         try:
+            stage_name = novel.current_stage.value
+            logger.debug(f"[{novel.novel_id}] 当前阶段: {stage_name}")
+
             if novel.current_stage == NovelStage.MACRO_PLANNING:
+                logger.info(f"[{novel.novel_id}] 📋 开始宏观规划")
                 await self._handle_macro_planning(novel)
             elif novel.current_stage == NovelStage.ACT_PLANNING:
+                logger.info(f"[{novel.novel_id}] 📝 开始幕级规划 (第 {novel.current_act + 1} 幕)")
                 await self._handle_act_planning(novel)
             elif novel.current_stage == NovelStage.WRITING:
+                logger.info(f"[{novel.novel_id}] ✍️  开始写作 (第 {novel.current_act + 1} 幕)")
                 await self._handle_writing(novel)
             elif novel.current_stage == NovelStage.AUDITING:
+                logger.info(f"[{novel.novel_id}] 🔍 开始审计")
                 await self._handle_auditing(novel)
             elif novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
+                logger.debug(f"[{novel.novel_id}] ⏸️  等待人工审阅")
                 return  # 人工干预点：不处理，等前端确认
 
             # ✅ 保存状态（最小事务：只在这里写库）
             self.novel_repository.save(novel)
+            logger.debug(f"[{novel.novel_id}] 💾 状态已保存")
 
             # 熔断器：成功则重置错误计数
             if self.circuit_breaker:
@@ -98,7 +130,7 @@ class AutopilotDaemon:
             novel.consecutive_error_count = 0
 
         except Exception as e:
-            logger.error(f"[{novel.novel_id}] 处理失败: {e}", exc_info=True)
+            logger.error(f"❌ [{novel.novel_id}] 处理失败: {e}", exc_info=True)
 
             # 熔断器：记录失败
             if self.circuit_breaker:
@@ -107,8 +139,10 @@ class AutopilotDaemon:
 
             if novel.consecutive_error_count >= 3:
                 # 单本小说连续 3 次错误 → 挂起（不影响其他小说）
-                logger.error(f"[{novel.novel_id}] 连续失败 3 次，挂起等待急救")
+                logger.error(f"🚨 [{novel.novel_id}] 连续失败 {novel.consecutive_error_count} 次，挂起等待急救")
                 novel.autopilot_status = AutopilotStatus.ERROR
+            else:
+                logger.warning(f"⚠️  [{novel.novel_id}] 连续失败 {novel.consecutive_error_count}/3 次")
             self.novel_repository.save(novel)
 
     async def _handle_macro_planning(self, novel: Novel):
@@ -180,6 +214,7 @@ class AutopilotDaemon:
         act_children = self.story_node_repo.get_children_sync(target_act.id)
         confirmed_chapters = [n for n in act_children if n.node_type.value == "chapter"]
 
+        just_created_chapter_plan = False
         if not confirmed_chapters:
             plan_result = await self.planning_service.plan_act_chapters(
                 act_id=target_act.id,
@@ -191,11 +226,29 @@ class AutopilotDaemon:
                     act_id=target_act.id,
                     chapters=chapters_data
                 )
+                just_created_chapter_plan = True
 
-        # ⏸ 幕级章节大纲就绪，再次进入人工审阅点
+        act_children = self.story_node_repo.get_children_sync(target_act.id)
+        confirmed_chapters = [n for n in act_children if n.node_type.value == "chapter"]
+
         novel.current_act = target_act_number
-        novel.current_stage = NovelStage.PAUSED_FOR_REVIEW
-        logger.info(f"[{novel.novel_id}] 第 {target_act_number} 幕规划完成，进入审阅等待")
+
+        if not confirmed_chapters:
+            logger.error(
+                f"[{novel.novel_id}] 幕 {target_act_number} 仍无章节节点，下轮继续幕级规划"
+            )
+            novel.current_stage = NovelStage.ACT_PLANNING
+            return
+
+        # 仅在本轮「新落库」幕级章节规划时暂停审阅；用户确认后同幕已有节点则直接写作，避免反复弹审批
+        if just_created_chapter_plan:
+            novel.current_stage = NovelStage.PAUSED_FOR_REVIEW
+            logger.info(f"[{novel.novel_id}] 第 {target_act_number} 幕规划完成，进入审阅等待")
+        else:
+            novel.current_stage = NovelStage.WRITING
+            logger.info(
+                f"[{novel.novel_id}] 第 {target_act_number} 幕章节节点已存在，进入写作"
+            )
 
     async def _handle_writing(self, novel: Novel):
         """处理写作（节拍级幂等落库）"""
@@ -229,7 +282,8 @@ class AutopilotDaemon:
         if needs_buffer:
             outline = f"【缓冲章：日常过渡】{outline}。主角战后休整，与配角闲聊，展示收获，节奏轻松。"
 
-        logger.info(f"[{novel.novel_id}] 开始写第 {chapter_num} 章：{outline[:60]}...")
+        logger.info(f"[{novel.novel_id}] 📖 开始写第 {chapter_num} 章：{outline[:60]}...")
+        logger.info(f"[{novel.novel_id}]    进度: {novel.current_auto_chapters or 0}/{novel.max_auto_chapters or 50} 章")
 
         # 4. 组装上下文（不持有数据库锁，纯读操作）
         context = ""
@@ -271,7 +325,7 @@ class AutopilotDaemon:
                 novel.current_beat_index = i + 1
                 self.novel_repository.save(novel)
 
-                logger.info(f"  节拍 {i+1}/{len(beats)} 落库：{len(beat_content)} 字")
+                logger.info(f"[{novel.novel_id}]    ✅ 节拍 {i+1}/{len(beats)} 完成: {len(beat_content)} 字")
         else:
             # 降级：无节拍，一次生成
             beat_content = await self._stream_one_beat(outline, context, None, None)
@@ -287,7 +341,7 @@ class AutopilotDaemon:
         novel.current_beat_index = 0
         novel.current_stage = NovelStage.AUDITING
 
-        logger.info(f"[{novel.novel_id}] 第 {chapter_num} 章完成：{len(chapter_content)} 字")
+        logger.info(f"[{novel.novel_id}] 🎉 第 {chapter_num} 章完成：{len(chapter_content)} 字 (共 {novel.current_auto_chapters}/{novel.max_auto_chapters or 50} 章)")
 
     async def _handle_auditing(self, novel: Novel):
         """处理审计（含张力打分）"""
