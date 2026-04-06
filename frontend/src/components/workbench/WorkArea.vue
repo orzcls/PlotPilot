@@ -5,14 +5,17 @@
         <h2 class="work-title">{{ bookTitle || slug }}</h2>
         <n-text depth="3" class="work-sub">{{ slug }}</n-text>
       </div>
-      <n-radio-group
-        v-model:value="workMode"
-        size="small"
-        class="work-mode-switch"
-      >
-        <n-radio-button value="assisted">辅助撰稿</n-radio-button>
-        <n-radio-button value="managed">托管撰稿</n-radio-button>
-      </n-radio-group>
+      <div class="work-mode-switch" role="group" aria-label="创作模式">
+        <n-switch
+          v-model:value="workMode"
+          checked-value="managed"
+          unchecked-value="assisted"
+          size="large"
+        >
+          <template #unchecked>辅助撰稿</template>
+          <template #checked>托管撰稿</template>
+        </n-switch>
+      </div>
     </header>
 
     <div class="work-body">
@@ -767,6 +770,13 @@ defineExpose({ ensureAssistedMode })
 
 .work-mode-switch {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* 双语文案轨道略宽，避免挤字 */
+.work-mode-switch :deep(.n-switch__rail) {
+  min-width: 5.5rem;
 }
 
 .assisted-readonly-banner {
