@@ -155,6 +155,17 @@ def get_foreshadowing_repository() -> SqliteForeshadowingRepository:
     return SqliteForeshadowingRepository(get_database())
 
 
+def get_snapshot_service():
+    """语义快照服务（novel_snapshots；用于编年史 BFF 与回滚）。"""
+    from application.snapshot.services.snapshot_service import SnapshotService
+
+    return SnapshotService(
+        get_database(),
+        get_chapter_repository(),
+        get_foreshadowing_repository(),
+    )
+
+
 def get_timeline_repository() -> SqliteTimelineRepository:
     """获取时间线仓储"""
     return SqliteTimelineRepository(get_database())

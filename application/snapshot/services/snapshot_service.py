@@ -95,6 +95,26 @@ class SnapshotService:
         rows = self.db.fetch_all(sql, (novel_id,))
         return [dict(row) for row in rows]
 
+    def list_snapshots_with_pointers(self, novel_id: str) -> List[Dict[str, Any]]:
+        """编年史 BFF：含 chapter_pointers，按创建时间升序（叙事轴从下往上可读）。"""
+        sql = """
+            SELECT id, name, trigger_type, branch_name, created_at, description, chapter_pointers
+            FROM novel_snapshots
+            WHERE novel_id = ?
+            ORDER BY created_at ASC
+        """
+        rows = self.db.fetch_all(sql, (novel_id,))
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            d = dict(row)
+            raw = d.get("chapter_pointers")
+            try:
+                d["chapter_pointers"] = json.loads(raw) if raw else []
+            except (TypeError, json.JSONDecodeError):
+                d["chapter_pointers"] = []
+            out.append(d)
+        return out
+
     def get_snapshot(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
         """获取快照详情"""
         sql = "SELECT * FROM novel_snapshots WHERE id = ?"
