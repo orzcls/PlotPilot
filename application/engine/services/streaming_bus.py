@@ -4,6 +4,8 @@
 使用 multiprocessing.Queue 实现跨进程通信。
 
 注意：每个小说有独立的队列，避免消息混乱。
+
+重要：Manager 必须在主进程中初始化，因为守护进程（daemon=True）不允许创建子进程。
 """
 import asyncio
 import json
@@ -18,20 +20,65 @@ logger = logging.getLogger(__name__)
 
 # 全局队列管理器（单例）
 # 使用 Manager 创建跨进程共享的字典
+# 重要：必须在主进程中调用 init_streaming_bus() 初始化，不能懒加载
+# 因为守护进程（daemon=True）不允许创建子进程，而 Manager 需要启动管理进程
 _manager: Optional[mp.Manager] = None
 _stream_queues: Optional[Dict] = None  # novel_id -> Queue
 _lock = threading.Lock()
+_initialized = False
+
+
+def init_streaming_bus():
+    """在主进程中初始化 StreamingBus 的 Manager。
+    
+    必须在启动守护进程前调用，因为守护进程（daemon=True）不允许创建子进程。
+    Manager() 会启动一个管理进程，所以必须在主进程中创建。
+    
+    Example:
+        # 在 main.py 中，启动守护进程之前调用
+        from application.engine.services.streaming_bus import init_streaming_bus
+        init_streaming_bus()
+        start_autopilot_daemon_thread()
+    """
+    global _manager, _stream_queues, _initialized
+    
+    if _initialized:
+        logger.debug("[StreamingBus] 已初始化，跳过")
+        return
+    
+    with _lock:
+        if _initialized:
+            return
+        
+        logger.info("[StreamingBus] 在主进程中初始化 Manager...")
+        _manager = mp.Manager()
+        _stream_queues = _manager.dict()
+        _initialized = True
+        logger.info("[StreamingBus] Manager 初始化完成")
 
 
 def _get_manager():
-    """获取或创建全局 Manager（懒加载）"""
-    global _manager, _stream_queues
-    if _manager is None:
-        with _lock:
-            if _manager is None:
-                _manager = mp.Manager()
-                _stream_queues = _manager.dict()
-                logger.info("[StreamingBus] Manager 已初始化")
+    """获取全局 Manager（必须在主进程中预先初始化）"""
+    global _manager, _stream_queues, _initialized
+    
+    if not _initialized or _manager is None:
+        # 如果未初始化，尝试在非守护进程中初始化
+        # 如果当前是守护进程，会抛出 "daemonic processes are not allowed to have children"
+        import multiprocessing as mp_check
+        current_process = mp_check.current_process()
+        if current_process.daemon:
+            logger.error(
+                "[StreamingBus] 错误：在守护进程中调用但 Manager 未初始化！"
+                "请在主进程中调用 init_streaming_bus() 启动守护进程前。"
+            )
+            raise RuntimeError(
+                "StreamingBus Manager 未初始化。"
+                "必须在主进程启动守护进程前调用 init_streaming_bus()。"
+            )
+        
+        # 非守护进程：可以尝试初始化
+        init_streaming_bus()
+    
     return _manager, _stream_queues
 
 

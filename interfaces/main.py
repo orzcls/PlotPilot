@@ -208,6 +208,12 @@ def _start_autopilot_daemon_thread():
         logger.info("🔒 守护进程自动启动已禁用（DISABLE_AUTO_DAEMON=1）")
         return
     
+    # 重要：在启动守护进程前初始化 StreamingBus 的 Manager
+    # 因为守护进程（daemon=True）不允许创建子进程
+    # Manager() 需要启动一个管理进程，所以必须在主进程中创建
+    from application.engine.services.streaming_bus import init_streaming_bus
+    init_streaming_bus()
+    
     _daemon_stop_event = multiprocessing.Event()
     
     # 使用独立进程运行守护进程，完全隔离于主进程的事件循环
