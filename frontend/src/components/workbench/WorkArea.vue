@@ -504,7 +504,7 @@ const emit = defineEmits<{
 const message = useMessage()
 
 /** 辅助撰稿：编辑与章级工具；托管撰稿：驾驶舱 + 监控大盘 */
-const workMode = ref<'assisted' | 'managed'>('assisted')
+const workMode = ref<'assisted' | 'managed'>('managed')
 
 // Tab 状态（仅辅助撰稿）
 const activeTab = ref('editor')
