@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import threading
 
 # Core module
 from interfaces.api.v1.core import novels, chapters, scene_generation_routes
@@ -93,15 +94,98 @@ async def startup_event():
     logger.info("📦 Loading modules and routes...")
     logger.info("✅ FastAPI application started successfully")
     logger.info(f"📊 Registered {len(app.routes)} routes")
+    
+    # 启动自动驾驶守护进程（后台线程）
+    _start_autopilot_daemon_thread()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件"""
+    # 停止守护进程线程
+    _stop_autopilot_daemon_thread()
+    
     uptime = time.time() - STARTUP_TIME
     logger.info("=" * 80)
     logger.info(f"🛑 BACKEND SHUTTING DOWN")
     logger.info(f"   Total uptime: {uptime:.2f} seconds ({uptime/3600:.2f} hours)")
     logger.info("=" * 80)
+
+# 守护进程线程管理
+_daemon_thread = None
+_daemon_stop_event = None
+
+
+def _start_autopilot_daemon_thread():
+    """启动自动驾驶守护进程线程"""
+    global _daemon_thread, _daemon_stop_event
+    
+    if _daemon_thread is not None and _daemon_thread.is_alive():
+        logger.warning("⚠️  守护进程线程已在运行，跳过重复启动")
+        return
+    
+    # 检查环境变量是否禁用自动启动守护进程
+    if os.getenv("DISABLE_AUTO_DAEMON", "").lower() in ("1", "true", "yes"):
+        logger.info("🔒 守护进程自动启动已禁用（DISABLE_AUTO_DAEMON=1）")
+        return
+    
+    from scripts.start_daemon import build_daemon
+    
+    _daemon_stop_event = threading.Event()
+    
+    def daemon_worker():
+        """守护进程工作线程"""
+        try:
+            daemon = build_daemon()
+            logger.info("🚀 守护进程线程已启动，开始轮询...")
+            
+            # 使用自定义的停止检查
+            while not _daemon_stop_event.is_set():
+                try:
+                    # 执行守护进程的一个轮询周期
+                    active_novels = daemon._get_active_novels()
+                    
+                    if active_novels:
+                        import asyncio
+                        for novel in active_novels:
+                            if _daemon_stop_event.is_set():
+                                break
+                            asyncio.run(daemon._process_novel(novel))
+                    
+                    # 轮询间隔
+                    _daemon_stop_event.wait(timeout=daemon.poll_interval)
+                    
+                except Exception as e:
+                    logger.error(f"❌ 守护进程线程异常: {e}", exc_info=True)
+                    _daemon_stop_event.wait(timeout=10)  # 异常后等待10秒
+                    
+        except Exception as e:
+            logger.error(f"❌ 守护进程线程初始化失败: {e}", exc_info=True)
+        finally:
+            logger.info("🛑 守护进程线程已停止")
+    
+    _daemon_thread = threading.Thread(target=daemon_worker, daemon=True, name="AutopilotDaemon")
+    _daemon_thread.start()
+    logger.info("✅ 守护进程线程已创建并启动")
+
+
+def _stop_autopilot_daemon_thread():
+    """停止守护进程线程"""
+    global _daemon_thread, _daemon_stop_event
+    
+    if _daemon_stop_event:
+        logger.info("🛑 正在停止守护进程线程...")
+        _daemon_stop_event.set()
+        
+    if _daemon_thread and _daemon_thread.is_alive():
+        _daemon_thread.join(timeout=5)  # 等待最多5秒
+        if _daemon_thread.is_alive():
+            logger.warning("⚠️  守护进程线程未在超时时间内停止")
+        else:
+            logger.info("✅ 守护进程线程已成功停止")
+    
+    _daemon_thread = None
+    _daemon_stop_event = None
+
 
 # 配置 CORS
 app.add_middleware(
@@ -180,10 +264,15 @@ async def health_check():
         健康状态
     """
     uptime = time.time() - STARTUP_TIME
+    daemon_alive = _daemon_thread is not None and _daemon_thread.is_alive()
     return {
         "status": "healthy",
         "version": BACKEND_VERSION,
-        "uptime_seconds": round(uptime, 2)
+        "uptime_seconds": round(uptime, 2),
+        "daemon_thread": {
+            "running": daemon_alive,
+            "name": _daemon_thread.name if _daemon_thread else None
+        }
     }
 
 
