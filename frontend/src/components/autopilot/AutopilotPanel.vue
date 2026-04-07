@@ -77,15 +77,10 @@
     <RealtimeLogStream
       v-if="isRunning"
       :novel-id="novelId"
+      :writing-content="writingContent"
+      :writing-chapter-number="writingChapterNumber"
+      :writing-beat-index="writingBeatIndex"
       @desk-refresh="emit('desk-refresh')"
-    />
-
-    <!-- 实时章节内容流（仅在写作阶段显示） -->
-    <ChapterWriterStream
-      v-if="isRunning"
-      :novel-id="novelId"
-      :is-writing="isWriting"
-      @content-update="handleChapterContentUpdate"
     />
 
     <!-- 操作按钮 -->
@@ -164,7 +159,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import RealtimeLogStream from './RealtimeLogStream.vue'
-import ChapterWriterStream from './ChapterWriterStream.vue'
+import { subscribeChapterStream } from '../../api/config'
 
 const props = defineProps({ novelId: String })
 const emit = defineEmits(['status-change', 'desk-refresh', 'chapter-content-update'])
@@ -410,12 +405,63 @@ async function clearCircuitBreaker() {
   }
 }
 
-function handleChapterContentUpdate(data) {
-  emit('chapter-content-update', data)
+// 章节内容流订阅（用于推送内容到编辑框）
+let chapterStreamCtrl = null
+
+// 写作内容状态（传递给 RealtimeLogStream 显示）
+const writingContent = ref('')
+const writingChapterNumber = ref(0)
+const writingBeatIndex = ref(0)
+
+function startChapterStream() {
+  if (chapterStreamCtrl) {
+    chapterStreamCtrl.abort()
+  }
+  writingContent.value = ''
+  writingChapterNumber.value = 0
+  writingBeatIndex.value = 0
+
+  chapterStreamCtrl = subscribeChapterStream(props.novelId, {
+    onChapterStart: (num) => {
+      writingChapterNumber.value = num
+      writingContent.value = ''
+      writingBeatIndex.value = 0
+    },
+    onChapterContent: (data) => {
+      writingContent.value = data.content
+      writingChapterNumber.value = data.chapterNumber
+      writingBeatIndex.value = data.beatIndex
+      emit('chapter-content-update', data)
+    },
+    onError: (err) => {
+      console.error('Chapter stream error:', err)
+    }
+  })
 }
 
+function stopChapterStream() {
+  if (chapterStreamCtrl) {
+    chapterStreamCtrl.abort()
+    chapterStreamCtrl = null
+  }
+}
+
+watch(
+  () => isRunning.value,
+  (running) => {
+    if (running) {
+      startChapterStream()
+    } else {
+      stopChapterStream()
+    }
+  }
+)
+
 onMounted(() => { fetchStatus() })
-onUnmounted(() => clearStatusPoll())
+onUnmounted(() => {
+  clearStatusPoll()
+  stopChapterStream()
+})
 </script>
 
 <style scoped>

@@ -38,6 +38,19 @@
         </n-text>
       </div>
 
+      <!-- 实时写作进度（显示字数、速率、光标） -->
+      <div v-if="isWritingContent" class="writing-stream-bar">
+        <span class="stream-cursor">▋</span>
+        <span class="stream-info">
+          正在生成第 {{ writingChapterNumber }} 章
+          <span v-if="writingBeatIndex > 0" class="beat-badge">节拍 {{ writingBeatIndex }}</span>
+        </span>
+        <span class="stream-stats">
+          {{ writingWordCount }} 字
+          <span v-if="writingSpeed > 0" class="speed">· {{ writingSpeed }} 字/秒</span>
+        </span>
+      </div>
+
       <!-- 仅折叠时间线；写作进度条与卡片标题始终可见 -->
       <n-collapse-transition :show="!logCollapsed">
         <div class="stream-wrap">
@@ -119,6 +132,9 @@ interface ProgressPayload {
 
 const props = defineProps<{
   novelId: string
+  writingContent?: string
+  writingChapterNumber?: number
+  writingBeatIndex?: number
 }>()
 
 const emit = defineEmits<{
@@ -139,6 +155,16 @@ const endedSummary = ref('')
 const logCollapsed = ref(false)
 /** 最新一条 progress 事件，用于顶部进度条（不入时间线，避免刷屏） */
 const latestProgress = ref<ProgressPayload | null>(null)
+
+// 写作速率计算
+const lastWordCount = ref(0)
+const lastTimestamp = ref(0)
+const writingSpeed = ref(0)
+
+const isWritingContent = computed(() => props.writingContent && props.writingContent.length > 0)
+const writingWordCount = computed(() => props.writingContent?.length || 0)
+const writingChapterNumber = computed(() => props.writingChapterNumber || 0)
+const writingBeatIndex = computed(() => props.writingBeatIndex || 0)
 
 const progressBarPct = computed(() => {
   const p = latestProgress.value?.metadata?.progress_pct
@@ -397,6 +423,9 @@ watch(
     latestProgress.value = null
     logEvents.value = []
     connectionStatus.value = 'disconnected'
+    lastWordCount.value = 0
+    lastTimestamp.value = 0
+    writingSpeed.value = 0
     if (eventSource) {
       eventSource.close()
       eventSource = null
@@ -406,6 +435,30 @@ watch(
       reconnectTimer = null
     }
     connectSSE()
+  }
+)
+
+// 计算写作速率
+watch(
+  () => props.writingContent,
+  (content) => {
+    if (!content) {
+      lastWordCount.value = 0
+      lastTimestamp.value = 0
+      writingSpeed.value = 0
+      return
+    }
+    const now = Date.now()
+    const currentCount = content.length
+    if (lastTimestamp.value > 0 && lastWordCount.value > 0) {
+      const timeDiff = (now - lastTimestamp.value) / 1000 // 秒
+      const wordDiff = currentCount - lastWordCount.value
+      if (timeDiff > 0 && wordDiff > 0) {
+        writingSpeed.value = Math.round(wordDiff / timeDiff)
+      }
+    }
+    lastWordCount.value = currentCount
+    lastTimestamp.value = now
   }
 )
 
@@ -466,6 +519,52 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 实时写作进度条 */
+.writing-stream-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, rgba(24, 160, 88, 0.06) 0%, rgba(24, 160, 88, 0.02) 100%);
+  border: 1px solid rgba(24, 160, 88, 0.15);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.writing-stream-bar .stream-cursor {
+  color: #18a058;
+  animation: blink 1s step-end infinite;
+  font-size: 14px;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.writing-stream-bar .stream-info {
+  flex: 1;
+  color: var(--text-color-2);
+}
+
+.writing-stream-bar .beat-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(24, 160, 88, 0.15);
+  color: #18a058;
+  font-size: 11px;
+}
+
+.writing-stream-bar .stream-stats {
+  color: var(--text-color-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.writing-stream-bar .speed {
+  color: #18a058;
 }
 
 /* 顶部状态栏 */
