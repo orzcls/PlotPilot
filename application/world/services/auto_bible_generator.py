@@ -539,13 +539,13 @@ JSON 格式（不要有其他文字）：
                     culture=worldbuilding_data.get("culture"),
                     daily_life=worldbuilding_data.get("daily_life")
                 )
-                logger.info(f"Worldbuilding saved to Worldbuilding table")
+                logger.info("Worldbuilding saved to Worldbuilding table")
             except Exception as e:
                 logger.error(f"Failed to save worldbuilding: {e}")
 
         # 2. 同时保存到Bible的world_settings（用于前端显示）
         try:
-            logger.info(f"Saving worldbuilding to Bible.world_settings")
+            logger.info("Saving worldbuilding to Bible.world_settings")
             bible = self.bible_service.get_bible_by_novel(novel_id)
             if not bible:
                 bible_id = f"{novel_id}-bible"
@@ -582,7 +582,7 @@ JSON 格式（不要有其他文字）：
                 "culture": wb.culture,
                 "daily_life": wb.daily_life
             }
-        except (AttributeError, TypeError, KeyError):
+        except (AttributeError, TypeError, KeyError, EntityNotFoundError):
             return {}
 
     def _load_characters(self, novel_id: str) -> list:
@@ -590,7 +590,7 @@ JSON 格式（不要有其他文字）：
         try:
             bible = self.bible_service.get_bible(novel_id)
             return [{"name": c.name, "description": c.description} for c in bible.characters]
-        except (AttributeError, TypeError):
+        except (AttributeError, TypeError, EntityNotFoundError):
             return []
 
     async def _generate_worldbuilding_and_style(self, premise: str, target_chapters: int) -> Dict[str, Any]:
@@ -771,16 +771,18 @@ JSON 格式：
         config = GenerationConfig(max_tokens=4096, temperature=0.7)
         result = await self.llm_service.generate(prompt, config)
 
-        content = ""
+        content = result.content or ""
         try:
-            content = _sanitize_llm_json_output(result.content)
-            return _parse_llm_json_to_dict(content)
+            parsed = parse_json_from_response(content)
+            if not isinstance(parsed, dict):
+                raise ValueError("LLM JSON payload must be an object")
+            return parsed
         except json.JSONDecodeError as e:
             logger.error(f"Content length: {len(content)}")
             logger.error(f"Failed to parse JSON: {e}")
             logger.error(f"Raw content (first 1000 chars): {content[:1000]}")
             logger.error(f"Raw content (last 500 chars): {content[-500:]}")
-            return {}
+            raise
 
     async def _call_llm_and_parse_with_retry(
         self,
@@ -795,16 +797,19 @@ JSON 格式：
             try:
                 if attempt == 0:
                     # 第一次尝试，使用标准prompt
-                    return await self._call_llm_and_parse(system_prompt, user_prompt)
+                    parsed = await self._call_llm_and_parse(system_prompt, user_prompt)
                 else:
                     # 重试时加强调prompt
                     retry_reminder = "\n\n【重要提醒】上次JSON解析失败，请严格遵守JSON输出规则！只输出纯JSON，不要任何其他文字！"
                     logger.warning(f"JSON解析重试 {attempt}/{max_retries}，添加强调提示")
-                    return await self._call_llm_and_parse(
+                    parsed = await self._call_llm_and_parse(
                         system_prompt + retry_reminder,
                         user_prompt
                     )
-            except json.JSONDecodeError as e:
+                if parsed:
+                    return parsed
+                raise ValueError("LLM returned empty JSON object")
+            except (json.JSONDecodeError, ValueError) as e:
                 last_error = e
                 logger.warning(f"JSON解析失败，重试 {attempt + 1}/{max_retries}: {str(e)[:100]}")
             except Exception as e:
@@ -812,9 +817,9 @@ JSON 格式：
                 logger.warning(f"LLM调用异常，重试 {attempt + 1}/{max_retries}: {e}")
 
         if last_error is not None:
-            logger.error(f"所有重试都失败，返回空字典。最后一次错误: {last_error}")
+            logger.error("所有重试都失败，返回空字典。最后一次错误: %s", last_error)
         else:
-            logger.error(f"所有重试都失败，返回空字典")
+            logger.error("所有重试都失败，返回空字典")
         return {}
 
     async def _generate_character_triples(self, novel_id: str, character_ids: list):

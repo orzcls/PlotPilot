@@ -20,7 +20,7 @@ class OpenAIProvider(BaseProvider):
     """OpenAI LLM 提供商实现
 
     通过 use_legacy_chat_completions 显式选择协议：
-    - False（默认）：走 Responses API，失败时自动降级到 Chat Completions
+    - False (默认)：走 Responses API，失败时自动降级到 Chat Completions
     - True：走 Chat Completions API
     """
 
@@ -48,7 +48,7 @@ class OpenAIProvider(BaseProvider):
         self.async_client = AsyncOpenAI(**client_kwargs)
 
     def _persist_legacy_flag(self, use_legacy: bool) -> None:
-        """将 use_legacy_chat_completions 标志持久化到数据库（仅当有 profile_id 时）。"""
+        """将 use_legacy_chat_completions 标志持久化到数据库 (仅当有 profile_id 时)。"""
         if not self._profile_id:
             return
         try:
@@ -87,7 +87,9 @@ class OpenAIProvider(BaseProvider):
             return await self._generate_via_chat(prompt, config)
         except RuntimeError:
             raise
-        except Exception as e:
+        except (openai.APIError, openai.APIConnectionError, openai.RateLimitError, openai.APITimeoutError) as e:
+            raise RuntimeError(f"Failed to generate text: {str(e)}") from e
+        except (AttributeError, TypeError, ValueError) as e:
             raise RuntimeError(f"Failed to generate text: {str(e)}") from e
 
     async def _generate_via_chat(self, prompt: Prompt, config: GenerationConfig) -> GenerationResult:
@@ -134,10 +136,12 @@ class OpenAIProvider(BaseProvider):
                     return  # 正常完成则结束 generator
                 except (openai.NotFoundError, openai.BadRequestError):
                     self.__class__._fallback_to_chat_cache.add(base_url)
+                    self._persist_legacy_flag(True)
                     logger.info(f"Stream: Responses API unsupported for {base_url}, falling back.")
                 except Exception as e:
                     if "404" in str(e) or "Not Found" in str(e) or "400" in str(e) or "Account invalid" in str(e) or "INVALID_ARGUMENT" in str(e):
                         self.__class__._fallback_to_chat_cache.add(base_url)
+                        self._persist_legacy_flag(True)
                         logger.info(f"Stream: Gateway returned error for Responses API ({base_url}), falling back.")
                     else:
                         logger.error(f"[Responses Stream] Failed: {e}")
@@ -151,8 +155,11 @@ class OpenAIProvider(BaseProvider):
                 content = self._extract_text_from_stream_chunk(chunk)
                 if content:
                     yield content
-        except Exception as e:
-            logger.error(f"[Stream] Failed: {e}")
+        except (openai.APIError, openai.APIConnectionError, openai.RateLimitError, openai.APITimeoutError) as e:
+            logger.error(f"[Stream] API error: {e}")
+            raise RuntimeError(f"Failed to stream text: {str(e)}") from e
+        except (AttributeError, TypeError, ValueError) as e:
+            logger.error(f"[Stream] Response parsing error: {e}")
             raise RuntimeError(f"Failed to stream text: {str(e)}") from e
 
     @staticmethod

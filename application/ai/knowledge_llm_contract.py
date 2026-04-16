@@ -99,7 +99,7 @@ def initial_knowledge_openai_function_tool() -> Dict[str, Any]:
 
 
 def parse_json_from_response(rsp: str):
-    """从LLM响应中解析JSON，支持```json包裹格式"""
+    """从LLM响应中解析JSON，支持```json包裹格式和截断格式"""
     pattern = r"```json(.*?)```"
     rsp_json = None
     try:
@@ -120,6 +120,43 @@ def parse_json_from_response(rsp: str):
                 return json.loads(content)
         except (json.JSONDecodeError, ValueError, TypeError):
             pass
+        if "```json" in rsp:
+            try:
+                json_start = rsp.index("```json") + 7
+                content = rsp[json_start:].strip()
+                if content:
+                    content = content.rstrip()
+                    missing_braces = 0
+                    brace_count = 0
+                    bracket_count = 0
+                    in_string = False
+                    escape_next = False
+                    for ch in content:
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if ch == '\\':
+                            escape_next = True
+                            continue
+                        if ch == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        if in_string:
+                            continue
+                        if ch == '{':
+                            brace_count += 1
+                        elif ch == '}':
+                            brace_count -= 1
+                        elif ch == '[':
+                            bracket_count += 1
+                        elif ch == ']':
+                            bracket_count -= 1
+                    missing_braces = brace_count + bracket_count
+                    if missing_braces > 0:
+                        content = content + '}' * missing_braces
+                    return json.loads(content)
+            except (json.JSONDecodeError, ValueError, TypeError, IndexError):
+                pass
         raise e
 
 
