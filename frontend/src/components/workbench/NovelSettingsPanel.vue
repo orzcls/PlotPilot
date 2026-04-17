@@ -14,45 +14,67 @@
 
         <n-space vertical :size="16">
           <n-alert type="info" :show-icon="false">
-            梗概锁定与文风公约继续在「作品设定」里维护；这里负责书名、章节目标和每章目标字数。
+            梗概锁定与文风公约继续在「作品设定」里维护；这里默认展示当前项目配置，只有主动编辑时才会展开输入项。
           </n-alert>
 
-          <n-form label-placement="top">
-            <n-grid :cols="2" :x-gap="12" :y-gap="8" responsive="screen">
-              <n-gi>
-                <n-form-item label="书名">
-                  <n-input v-model:value="form.title" placeholder="小说标题" />
-                </n-form-item>
-              </n-gi>
-              <n-gi>
-                <n-form-item label="作者">
-                  <n-input v-model:value="form.author" placeholder="作者名" />
-                </n-form-item>
-              </n-gi>
-              <n-gi>
-                <n-form-item label="目标章节数">
-                  <n-input-number
-                    v-model:value="form.target_chapters"
-                    :min="1"
-                    :max="9999"
-                    :step="1"
-                    style="width: 100%"
-                  />
-                </n-form-item>
-              </n-gi>
-              <n-gi>
-                <n-form-item label="每章目标字数">
-                  <n-input-number
-                    v-model:value="form.target_words_per_chapter"
-                    :min="100"
-                    :max="20000"
-                    :step="100"
-                    style="width: 100%"
-                  />
-                </n-form-item>
-              </n-gi>
-            </n-grid>
-          </n-form>
+          <template v-if="editing">
+            <n-form label-placement="top">
+              <n-grid :cols="2" :x-gap="12" :y-gap="8" responsive="screen">
+                <n-gi>
+                  <n-form-item label="书名">
+                    <n-input v-model:value="form.title" placeholder="小说标题" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="作者">
+                    <n-input v-model:value="form.author" placeholder="作者名" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="目标章节数">
+                    <n-input-number
+                      v-model:value="form.target_chapters"
+                      :min="1"
+                      :max="9999"
+                      :step="1"
+                      style="width: 100%"
+                    />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="每章目标字数">
+                    <n-input-number
+                      v-model:value="form.target_words_per_chapter"
+                      :min="100"
+                      :max="20000"
+                      :step="100"
+                      style="width: 100%"
+                    />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+            </n-form>
+          </template>
+          <template v-else>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="summary-label">书名</span>
+                <strong class="summary-value">{{ form.title || '未设置' }}</strong>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">作者</span>
+                <strong class="summary-value">{{ form.author || '未设置' }}</strong>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">目标章节数</span>
+                <strong class="summary-value">{{ Number(form.target_chapters || 0).toLocaleString() }} 章</strong>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">每章目标字数</span>
+                <strong class="summary-value">{{ Number(form.target_words_per_chapter || 0).toLocaleString() }} 字</strong>
+              </div>
+            </div>
+          </template>
 
           <div class="settings-metrics">
             <div class="metric-item">
@@ -67,7 +89,11 @@
 
           <n-space justify="end">
             <n-button @click="loadNovel" :disabled="loading || saving">重载</n-button>
-            <n-button type="primary" :loading="saving" :disabled="!isDirty" @click="saveSettings">
+            <n-button v-if="editing" @click="cancelEditing" :disabled="saving">取消</n-button>
+            <n-button v-if="!editing" type="primary" ghost @click="startEditing">
+              编辑设置
+            </n-button>
+            <n-button v-else type="primary" :loading="saving" :disabled="!isDirty" @click="saveSettings">
               保存设置
             </n-button>
           </n-space>
@@ -94,6 +120,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const loading = ref(false)
 const saving = ref(false)
+const editing = ref(false)
 const snapshot = ref('')
 const form = reactive({
   title: '',
@@ -123,6 +150,7 @@ async function loadNovel() {
     form.target_chapters = novel.target_chapters || 100
     form.target_words_per_chapter = novel.target_words_per_chapter || 3500
     snapshot.value = JSON.stringify(form)
+    editing.value = false
   } catch (error) {
     console.error('load novel settings failed', error)
     message.error('加载小说设置失败')
@@ -141,6 +169,7 @@ async function saveSettings() {
       target_words_per_chapter: Number(form.target_words_per_chapter || 0),
     })
     snapshot.value = JSON.stringify(form)
+    editing.value = false
     message.success('小说设置已保存')
     emit('saved')
   } catch (error) {
@@ -149,6 +178,15 @@ async function saveSettings() {
   } finally {
     saving.value = false
   }
+}
+
+function startEditing() {
+  editing.value = true
+}
+
+function cancelEditing() {
+  Object.assign(form, JSON.parse(snapshot.value || '{}'))
+  editing.value = false
 }
 
 watch(() => props.slug, () => {
@@ -199,6 +237,32 @@ onMounted(() => {
   gap: 12px;
 }
 
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-item {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.summary-label {
+  display: block;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  margin-bottom: 6px;
+}
+
+.summary-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--app-text-primary);
+}
+
 .metric-item {
   padding: 14px;
   border-radius: 12px;
@@ -220,6 +284,7 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .summary-grid,
   .settings-metrics {
     grid-template-columns: 1fr;
   }

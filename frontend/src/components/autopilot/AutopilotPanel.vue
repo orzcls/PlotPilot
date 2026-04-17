@@ -102,23 +102,18 @@
         <n-alert type="success" :show-icon="true" style="font-size: 12px">
           <strong>自动托管</strong>：守护进程已在后端自动启动，配置好参数后点击"启动"即可开始自动写作。
         </n-alert>
+        <n-alert type="info" :show-icon="false" style="font-size: 12px">
+          目标章节数统一在右侧「小说设置」里维护。这里仅配置本次托管启动参数，避免与项目配置重复维护。
+        </n-alert>
         <n-form>
-          <!-- 目标章数（可编辑） -->
           <n-form-item label="目标章数">
-            <n-input-number 
-              v-model:value="startConfig.target_chapters"
-              :min="1"
-              :max="9999"
-              :step="10"
-              style="width: 100%"
-              @update:value="updateProtectionLimit"
-            />
+            <n-input :value="targetChapterSummary" readonly />
           </n-form-item>
           <!-- 保护上限 -->
           <n-form-item label="保护上限（章节数，防止意外消耗）">
             <n-input-number 
               v-model:value="startConfig.max_auto_chapters" 
-              :min="startConfig.target_chapters"
+              :min="targetChapters"
               :max="9999"
               :step="10"
               style="width: 100%"
@@ -146,7 +141,7 @@
               <strong>全自动模式已开启</strong>：系统将跳过所有审阅环节，自动运行直到写完。
             </template>
             <template v-else>
-              达到 <strong>{{ startConfig.target_chapters }} 章</strong> 目标时自动完成全书；保护上限已自动设置为 <strong>目标 + 20</strong>。
+              达到 <strong>{{ targetChapters }} 章</strong> 目标时自动完成全书；保护上限建议至少为 <strong>目标 + 20</strong>。
             </template>
           </n-alert>
         </n-form>
@@ -169,13 +164,13 @@ const status = ref(null)
 const toggling = ref(false)
 const showStartModal = ref(false)
 const startConfig = ref({ 
-  target_chapters: 100,
   max_auto_chapters: 120,
   auto_approve_mode: false
 })
 
 // 目标章数（从 status 获取）
 const targetChapters = computed(() => status.value?.target_chapters || 100)
+const targetChapterSummary = computed(() => `当前项目目标 ${targetChapters.value} 章`)
 /** HTTP/1.1 下同域长连接约 6 路；避免与日志 /stream 双开占满导致其它 API 挂起 */
 let statusPollTimer = null
 /** novel_id 在库中不存在(404)时不再轮询，避免旧标签页/错 slug 刷屏访问日志 */
@@ -301,56 +296,29 @@ function openStartModal() {
   const target = status.value?.target_chapters || 100
   const autoApprove = status.value?.auto_approve_mode ?? false
   startConfig.value = {
-    target_chapters: target,
     max_auto_chapters: target + 20,
     auto_approve_mode: autoApprove
   }
   showStartModal.value = true
 }
 
-function updateProtectionLimit() {
-  // 当目标章数改变时，自动调整保护上限
-  const target = startConfig.value.target_chapters
-  if (startConfig.value.max_auto_chapters < target + 20) {
-    startConfig.value.max_auto_chapters = target + 20
-  }
-}
-
 async function start() {
   toggling.value = true
   try {
-    // 先更新小说的目标章节数和全自动模式（如果需要修改）
-    const currentTarget = status.value?.target_chapters
-    const newTarget = startConfig.value.target_chapters
     const currentAutoApprove = status.value?.auto_approve_mode ?? false
     const newAutoApprove = startConfig.value.auto_approve_mode
-    
-    if (currentTarget !== newTarget || currentAutoApprove !== newAutoApprove) {
-      const updateRes = await fetch(`/api/v1/novels/${props.novelId}`, {
-        method: 'PUT',
+
+    if (currentAutoApprove !== newAutoApprove) {
+      const approveRes = await fetch(`/api/v1/novels/${props.novelId}/auto-approve-mode`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          target_chapters: newTarget
+          auto_approve_mode: newAutoApprove
         })
       })
-      if (!updateRes.ok) {
-        message.error('更新目标章节数失败')
+      if (!approveRes.ok) {
+        message.error('更新全自动模式失败')
         return
-      }
-      
-      // 更新全自动模式
-      if (currentAutoApprove !== newAutoApprove) {
-        const approveRes = await fetch(`/api/v1/novels/${props.novelId}/auto-approve-mode`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            auto_approve_mode: newAutoApprove
-          })
-        })
-        if (!approveRes.ok) {
-          message.error('更新全自动模式失败')
-          return
-        }
       }
     }
     
